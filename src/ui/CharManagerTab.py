@@ -85,12 +85,11 @@ class CharManagerTab(CustomTab):
         self.detail_v_layout.addLayout(self.combo_h_layout)
 
         self.combo_text = TextEdit()
-        self.combo_text.setPlaceholderText(og.app.tr("例如: intro, e, q, wait(0.5), a(3), z"))
+        self.combo_text.setPlaceholderText(og.app.tr("例如: skill, wait(0.5), l_click(3), ultimate"))
         self.combo_text.setMaximumHeight(100)
         self.detail_v_layout.addWidget(self.combo_text)
 
-        # === 动态指令大全 ===
-        self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("可用指令大全 (由 BaseChar 自动提取)")))
+        self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("可用指令")))
         
         self.doc_content = TextEdit()
         self.doc_content.setReadOnly(True)
@@ -366,9 +365,12 @@ class CharManagerTab(CustomTab):
         try:
             from src.char.custom.CustomChar import CustomChar
             docs = CustomChar.get_available_commands()
-            text = "可以在出招表中输入以下指令 (以逗号分隔，如: intro, e, q):\n\n"
+            text = "可以在出招表中输入以下指令 (以逗号分隔):\n\n"
             for d in docs:
-                text += f"•  {d['name']} : {d['doc']}\n"
+                text += f"▶ 【{d['name']}】\n"
+                text += f"    • 参数: {d.get('params', '无')}\n"
+                text += f"    • 说明: {d.get('doc', '无')}\n"
+                text += f"    • 示例: {d.get('example', d['name'])}\n\n"
             return text
         except Exception as e:
             return f"生成文档失败: {e}"

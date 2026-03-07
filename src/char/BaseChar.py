@@ -1,11 +1,11 @@
 import time  # noqa
 from enum import IntEnum, StrEnum  # noqa
-from typing import Any  # noqa
+from typing import Any, Union, Optional, List  # noqa
 
 import cv2  # noqa
 import numpy as np  # noqa
 
-from ok import Config, Logger  # noqa
+from ok import Config, Logger, Box  # noqa
 from src import text_white_color  # noqa
 
 from typing import TYPE_CHECKING
@@ -128,9 +128,16 @@ class BaseChar:
         """
         self.click(interval=interval)
 
-    def click(self, *args: Any, **kwargs: Any):
+    def click(self, x: Union[int, "Box", List["Box"]] = -1, y: int = -1, move_back: bool = False,
+              name: Optional[str] = None, interval: int = -1, move: bool = True, down_time: float = 0.01,
+              after_sleep: float = 0, key: str = 'left') -> bool:
         """执行一次点击操作 (代理到 task.click)。"""
-        self.task.click(*args, **kwargs)
+        self.task.click(x=x, y=y, move_back=move_back, name=name, interval=interval, move=move, down_time=down_time, after_sleep=after_sleep, key=key)
+
+    def send_key(self, key: Union[str, int], down_time: float = 0.02, interval: int = -1,
+                 after_sleep: float = 0) -> bool:
+        """执行一次发送按键操作 (代理到 task.send_key)。"""
+        self.task.send_key(key, down_time=down_time, interval=interval, after_sleep=after_sleep)
 
     def do_perform(self):
         """执行角色的标准战斗行动。"""
@@ -262,7 +269,7 @@ class BaseChar:
 
             if now - last_click > 0.1:
                 if send_click and last_op == 'skill':
-                    self.task.click()
+                    self.click()
                     last_op = 'click'
                     continue
                 if self.skill_available():
@@ -293,7 +300,7 @@ class BaseChar:
             down_time (float, optional): 按键按下的持续时间。默认为 0.01。
         """
         self._skill_available = False
-        self.task.send_key(self.get_skill_key(), interval=interval, down_time=down_time, after_sleep=post_sleep)
+        self.send_key(self.get_skill_key(), interval=interval, down_time=down_time, after_sleep=post_sleep)
 
     def send_ultimate_key(self, after_sleep=0, interval=-1, down_time=0.01):
         """发送共鸣解放按键。
@@ -304,7 +311,7 @@ class BaseChar:
             down_time (float, optional): 按键按下的持续时间。默认为 0.01。
         """
         self._ultimate_available = False
-        self.task.send_key(self.get_ultimate_key(), interval=interval, down_time=down_time, after_sleep=after_sleep)
+        self.send_key(self.get_ultimate_key(), interval=interval, down_time=down_time, after_sleep=after_sleep)
 
     def check_combat(self):
         """检查战斗状态 (代理到 task.check_combat)。"""
@@ -498,9 +505,9 @@ class BaseChar:
 
     def normal_attack_until_can_switch(self):
         """普通攻击直到可以切人。"""
-        self.task.click()
+        self.click()
         while self.time_elapsed_accounting_for_freeze(self.last_perform) < 1.1:
-            self.task.click(interval=0.1)
+            self.click(interval=0.1)
 
     def wait_switch_cd(self):
         since_last_switch = self.time_elapsed_accounting_for_freeze(self.last_perform)
@@ -524,7 +531,7 @@ class BaseChar:
                 return self.click_skill()
             if until_cycle_full and self.is_cycle_full():
                 return
-            self.task.click()
+            self.click()
             self.sleep(interval)
         self.sleep(after_sleep)
 
@@ -538,7 +545,7 @@ class BaseChar:
         """
         start = time.time()
         while time.time() - start < duration:
-            self.task.send_key(key, interval=interval)
+            self.send_key(key, interval=interval)
 
     def continues_right_click(self, duration, interval=0.1, direction_key=None):
         """持续进行鼠标右键点击操作一段时间，可选同时按住方向键。
@@ -549,19 +556,19 @@ class BaseChar:
             direction_key (str, optional): 如果指定，则在点击期间同时按下此键（如 'w'、'a'、's'、'd'）。
         """
         if direction_key is not None:
-            self.task.send_key_down(direction_key)
+            self.send_key_down(direction_key)
             self.task.next_frame()
         start = time.time()
         while time.time() - start < duration:
-            self.task.click(interval=interval, key="right")
+            self.click(interval=interval, key="right")
         if direction_key is not None:
-            self.task.send_key_up(direction_key)
+            self.send_key_up(direction_key)
 
     def normal_attack(self):
         """执行一次普通攻击。"""
         self.logger.debug('normal attack')
         self.check_combat()
-        self.task.click()
+        self.click()
 
     def heavy_attack(self, duration=0.6):
         """执行一次重攻击。
@@ -647,7 +654,7 @@ class BaseChar:
             if current_char and current_char.name != self.name:
                 break
             else:
-                self.task.send_key(next_char)
+                self.send_key(next_char)
             self.sleep(0.2, False)
         self.logger.debug(f'switch_other_char on_combat_end {self.index} switch end')
 
