@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class Labels(str, Enum):
+    boss_lv_text = 'boss_lv_text'
     box_char_1 = 'box_char_1'
     box_char_2 = 'box_char_2'
     box_char_3 = 'box_char_3'

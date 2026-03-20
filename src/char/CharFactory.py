@@ -1,3 +1,4 @@
+import math
 from typing import TYPE_CHECKING
 
 from typing_extensions import Any
@@ -83,7 +84,7 @@ def get_char_feature_by_pos(task: 'BaseCombatTask', index, frame=None, scale_box
     if frame is None:
         frame = task.frame
     box = task.get_box_by_name(f'box_char_{index + 1}')
-    if scale_box != 1.0:
+    if not math.isclose(scale_box, 1.0):
         box = box.scale(scale_box, scale_box)
     return box.crop_frame(frame), task.width, task.height
 

@@ -129,12 +129,12 @@ class BaseChar:
         self.click(interval=interval)
 
     def click(self, x: Union[int, "Box", List["Box"]] = -1, y: int = -1, move_back: bool = False,
-              name: Optional[str] = None, interval: int = -1, move: bool = True, down_time: float = 0.01,
+              name: Optional[str] = None, interval: float = -1, move: bool = True, down_time: float = 0.01,
               after_sleep: float = 0, key: str = 'left') -> bool:
         """执行一次点击操作 (代理到 task.click)。"""
         self.task.click(x=x, y=y, move_back=move_back, name=name, interval=interval, move=move, down_time=down_time, after_sleep=after_sleep, key=key)
 
-    def send_key(self, key: Union[str, int], down_time: float = 0.02, interval: int = -1,
+    def send_key(self, key: Union[str, int], down_time: float = 0.02, interval: float = -1,
                  after_sleep: float = 0) -> bool:
         """执行一次发送按键操作 (代理到 task.send_key)。"""
         self.task.send_key(key, down_time=down_time, interval=interval, after_sleep=after_sleep)

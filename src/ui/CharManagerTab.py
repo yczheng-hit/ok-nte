@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout,
-                               QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget, QFileDialog)
 
 from qfluentwidgets import (CardWidget, EditableComboBox, FluentIcon,
                             ImageLabel, ListWidget, PrimaryPushButton, InfoBar, InfoBarPosition,
@@ -10,7 +10,9 @@ from ok import og
 from ok.gui.widget.CustomTab import CustomTab
 from src.char.custom.CustomCharManager import CustomCharManager
 from src.ui.TeamScannerTab import cv_to_pixmap
+import json
 import zipfile
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -29,6 +31,10 @@ class CharManagerTab(CustomTab):
         self.tr_del_char_msg = og.app.tr('已成功删除角色: {} 以及关联的特征图')
         self.tr_unbind_success = og.app.tr('解除绑定')
         self.tr_unbind_msg = og.app.tr('已解除 {} 的出招表绑定')
+        self.tr_import_data = og.app.tr("导入数据")
+        self.tr_import_failed = og.app.tr("导入失败")
+        self.tr_import_success = og.app.tr("导入成功")
+        self.tr_import_msg = og.app.tr("已导入 {} 个文件")
         
         self.tr_name = og.app.tr('角色管理')
         self.tr_choose_char = og.app.tr('👈 请在左侧选择一个角色以管理特征和出招表')
@@ -59,11 +65,15 @@ class CharManagerTab(CustomTab):
         self.delete_char_btn.clicked.connect(self.on_delete_char)
         self.delete_char_btn.setEnabled(False)
 
+        self.import_btn = PushButton(FluentIcon.DOWNLOAD, self.tr_import_data, self)
+        self.import_btn.clicked.connect(self.on_import_data)
+
         self.export_btn = PushButton(FluentIcon.SHARE, og.app.tr("导出数据"), self)
         self.export_btn.clicked.connect(self.on_export_data)
         
         self.left_v_layout.addWidget(self.refresh_btn)
         self.left_v_layout.addWidget(self.delete_char_btn)
+        self.left_v_layout.addWidget(self.import_btn)
         self.left_v_layout.addWidget(self.export_btn)
         self.left_v_layout.addWidget(self.list_widget)
 
@@ -183,6 +193,98 @@ class CharManagerTab(CustomTab):
                     zipf.write(file_path, file_path.relative_to(Path.cwd()))
                     
         subprocess.run(f'explorer /select,"{zip_path.resolve()}"')
+
+    def on_import_data(self):
+        downloads_path = Path.home() / "Downloads"
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr_import_data,
+            str(downloads_path),
+            "Zip Files (*.zip)"
+        )
+        if not file_path:
+            return
+
+        try:
+            imported = self._import_custom_data_zip(Path(file_path))
+        except Exception as e:
+            InfoBar.error(
+                title=self.tr_import_failed,
+                content=str(e),
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=3000,
+                parent=self.window()
+            )
+            self.logger.error(str(e))
+            return
+
+        # Reload DB from disk and refresh UI
+        self.manager.load_db()
+        self.manager.validate_db()
+        self.refresh_list()
+
+        InfoBar.success(
+            title=self.tr_import_success,
+            content=self.tr_import_msg.format(imported),
+            orient=Qt.Orientation.Horizontal,
+            isClosable=True,
+            position=InfoBarPosition.TOP,
+            duration=2000,
+            parent=self.window()
+        )
+
+    def _import_custom_data_zip(self, zip_path: Path) -> int:
+        if not zip_path.is_file():
+            raise ValueError("文件不存在")
+
+        def norm(name: str) -> str:
+            return name.replace("\\", "/").lstrip("/")
+
+        with zipfile.ZipFile(zip_path, "r") as zipf:
+            infos = [i for i in zipf.infolist() if not i.is_dir()]
+            custom_infos = []
+            has_db = False
+            db_info = None
+            for info in infos:
+                name = norm(info.filename)
+                if not name.startswith("custom_chars/"):
+                    continue
+
+                parts = [p for p in name.split("/") if p]
+                if not parts or parts[0] != "custom_chars":
+                    raise ValueError("不支持的导入格式")
+                if any(p == ".." or ":" in p for p in parts):
+                    raise ValueError("不安全的压缩包路径")
+
+                if "/".join(parts) == "custom_chars/db.json":
+                    has_db = True
+                    db_info = info
+                custom_infos.append((info, parts))
+
+            if not has_db:
+                raise ValueError("仅支持导入导出数据的 zip（缺少 custom_chars/db.json）")
+            if not custom_infos:
+                raise ValueError("压缩包内没有可导入的数据")
+
+            try:
+                json.loads(zipf.read(db_info).decode("utf-8"))
+            except Exception:
+                raise ValueError("仅支持导入导出数据的 zip（custom_chars/db.json 无效）")
+
+            dest_root = Path.cwd().resolve()
+            imported = 0
+            for info, parts in custom_infos:
+                target = (dest_root / Path(*parts)).resolve()
+                if not target.is_relative_to(dest_root):
+                    raise ValueError("不安全的压缩包路径")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zipf.open(info, "r") as src, open(target, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                imported += 1
+
+        return imported
 
     def on_char_selected(self, item):
         if not item:
