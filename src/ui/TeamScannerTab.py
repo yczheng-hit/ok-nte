@@ -51,7 +51,9 @@ class NewCharDialog(MessageBoxBase):
 
         self.combo_list = ComboBox()
         self.combo_list.setPlaceholderText(self.tr_list_ph)
-        self.combo_list.addItems([""] + self.manager.get_all_combos())
+        self.combo_list.addItem("", "")
+        for label, combo_ref in self.manager.get_all_combo_items():
+            self.combo_list.addItem(label, combo_ref)
         self.viewLayout.addWidget(self.combo_list)
 
         self.widget.setMinimumWidth(320)
@@ -62,13 +64,24 @@ class NewCharDialog(MessageBoxBase):
         self.name_input.setText(text)
         char_info = self.manager.get_character_info(text)
         if isinstance(char_info, dict) and char_info.get("combo_name"):
-            self.combo_list.setText(char_info.get("combo_name"))
+            combo_ref = self.manager.to_combo_ref(char_info.get("combo_name"))
+            idx = self.combo_list.findData(combo_ref)
+            if idx >= 0:
+                self.combo_list.setCurrentIndex(idx)
+            else:
+                self.combo_list.setCurrentText(self.manager.to_combo_label(combo_ref))
         else:
-            self.combo_list.setText("")
+            self.combo_list.setCurrentIndex(0)
 
     def get_data(self):
         char_name = self.name_input.text().strip()
-        combo_name = self.combo_list.text().strip()
+        combo_text = self.combo_list.currentText().strip()
+        combo_name = self.manager.to_combo_ref(combo_text)
+        idx = self.combo_list.currentIndex()
+        if idx >= 0 and combo_text == self.combo_list.itemText(idx):
+            data = self.combo_list.itemData(idx)
+            if isinstance(data, str):
+                combo_name = data
         return char_name, combo_name
 
 
@@ -197,7 +210,7 @@ class TeamScannerTab(CustomTab):
         self.vbox.addLayout(self.cards_layout)
         
         self.desc = BodyLabel(self.tr_desc)
-        self.desc.setAlignment(Qt.AlignCenter)
+        self.desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.vbox.addWidget(self.desc)
         
         self.vbox.addStretch(1)

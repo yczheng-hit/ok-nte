@@ -1,16 +1,18 @@
 import json
 import os
 import uuid
-from threading import Lock
+from threading import Lock, RLock
 
 import cv2
 from ok import Logger, og
+from src.char.custom.BuiltinComboRegistry import BuiltinComboRegistry
 
 logger = Logger.get_logger(__name__)
 
 CUSTOM_CHARS_DIR = "custom_chars"
 FEATURES_DIR = os.path.join(CUSTOM_CHARS_DIR, "features")
 DB_PATH = os.path.join(CUSTOM_CHARS_DIR, "db.json")
+DB_SCHEMA_VERSION = 2
 
 
 class CustomCharManager:
@@ -27,161 +29,295 @@ class CustomCharManager:
     def __init__(self):
         if hasattr(self, 'initialized') and self.initialized:
             return
+        self._data_lock = RLock()
         os.makedirs(FEATURES_DIR, exist_ok=True)
-        self.db = {
-            "combos": {},
-            "characters": {},
-            "features": {}
-        }
-        self.load_db()
-        self.validate_db()
+        self.db = self._default_db()
         self._feature_cache = {}
         self._cache_scr_w = -1
         self._cache_scr_h = -1
         self._cache_fids = set()
+        self.load_db()
+        self.validate_db()
+        self.migrate_db_schema()
         self.initialized = True
 
     @staticmethod
+    def _default_db():
+        return {
+            "schema_version": DB_SCHEMA_VERSION,
+            "combos": {},
+            "characters": {},
+            "features": {}
+        }
+
+    @staticmethod
     def get_builtin_prefix():
-        return f"{og.app.tr('[内置代码]')} "
+        return BuiltinComboRegistry._legacy_prefix()
+
+    @staticmethod
+    def to_combo_ref(combo_name: str) -> str:
+        return BuiltinComboRegistry.to_ref(combo_name)
+
+    @staticmethod
+    def to_combo_label(combo_name: str) -> str:
+        return BuiltinComboRegistry.to_label(combo_name)
+
+    @staticmethod
+    def get_builtin_key(combo_name: str) -> str | None:
+        combo_ref = BuiltinComboRegistry.to_ref(combo_name)
+        key = BuiltinComboRegistry.ref_to_key(combo_ref)
+        if key and key in dict(BuiltinComboRegistry._get_builtin_entries()):
+            return key
+        return None
+
+    @staticmethod
+    def is_builtin_combo(combo_name: str) -> bool:
+        return CustomCharManager.get_builtin_key(combo_name) is not None
 
     def load_db(self):
+        loaded = self._default_db()
         if os.path.exists(DB_PATH):
             try:
                 with open(DB_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.db["combos"] = data.get("combos", {})
-                    self.db["characters"] = data.get("characters", {})
-                    self.db["features"] = data.get("features", {})
+                    if isinstance(data, dict):
+                        loaded["schema_version"] = data.get("schema_version", loaded["schema_version"])
+                        loaded["combos"] = data.get("combos", loaded["combos"])
+                        loaded["characters"] = data.get("characters", loaded["characters"])
+                        loaded["features"] = data.get("features", loaded["features"])
             except Exception as e:
                 logger.error(f"Failed to load custom char DB: {e}")
+        self.db = loaded
 
     def validate_db(self):
-        modified = False
-        for char_name, char_data in self.db["characters"].items():
-            valid_fids = []
-            for fid in char_data.get("feature_ids", []):
+        with self._data_lock:
+            modified = False
+
+            if not isinstance(self.db.get("features"), dict):
+                self.db["features"] = {}
+                modified = True
+
+            for char_name, char_data in self.db["characters"].items():
+                valid_fids = []
+                for fid in char_data.get("feature_ids", []):
+                    path = os.path.join(FEATURES_DIR, f"{fid}.png")
+                    if os.path.exists(path):
+                        valid_fids.append(fid)
+                    else:
+                        modified = True
+                char_data["feature_ids"] = valid_fids
+
+            # Keep db.features in sync with actual image assets on disk.
+            for fid in list(self.db["features"].keys()):
                 path = os.path.join(FEATURES_DIR, f"{fid}.png")
-                if os.path.exists(path):
-                    valid_fids.append(fid)
-                else:
+                if not os.path.exists(path):
+                    del self.db["features"][fid]
                     modified = True
-            char_data["feature_ids"] = valid_fids
-            
-        if modified:
-            self.save_db()
+
+            if modified:
+                self._invalidate_feature_cache()
+                self.save_db()
 
     def save_db(self):
-        try:
-            temp_path = DB_PATH + ".tmp"
-            with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(self.db, f, indent=4, ensure_ascii=False)
-            os.replace(temp_path, DB_PATH)
-        except Exception as e:
-            logger.error(f"Failed to save custom char DB: {e}")
+        with self._data_lock:
+            try:
+                self.db["schema_version"] = DB_SCHEMA_VERSION
+                temp_path = DB_PATH + ".tmp"
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(self.db, f, indent=4, ensure_ascii=False)
+                os.replace(temp_path, DB_PATH)
+            except Exception as e:
+                logger.error(f"Failed to save custom char DB: {e}")
+
+    def _invalidate_feature_cache(self):
+        self._feature_cache.clear()
+        self._cache_scr_w = -1
+        self._cache_scr_h = -1
+        self._cache_fids = set()
+
+    def migrate_db_schema(self):
+        with self._data_lock:
+            modified = False
+
+            if not isinstance(self.db.get("combos"), dict):
+                self.db["combos"] = {}
+                modified = True
+            if not isinstance(self.db.get("characters"), dict):
+                self.db["characters"] = {}
+                modified = True
+            if not isinstance(self.db.get("features"), dict):
+                self.db["features"] = {}
+                modified = True
+
+            normalized_combos = {}
+            for combo_name, combo_content in self.db.get("combos", {}).items():
+                combo_ref = self.to_combo_ref(str(combo_name))
+                # Keep any builtin-looking custom keys as-is to avoid accidental data loss.
+                if self.is_builtin_combo(combo_ref):
+                    combo_ref = str(combo_name)
+                normalized_combos[combo_ref] = combo_content
+            if normalized_combos != self.db["combos"]:
+                self.db["combos"] = normalized_combos
+                modified = True
+
+            for char_name, char_data in self.db.get("characters", {}).items():
+                if not isinstance(char_data, dict):
+                    self.db["characters"][char_name] = {"combo_ref": "", "combo_name": "", "feature_ids": []}
+                    modified = True
+                    continue
+
+                combo_raw = char_data.get("combo_ref", char_data.get("combo_name", ""))
+                combo_ref = self.to_combo_ref(combo_raw)
+                if char_data.get("combo_ref") != combo_ref:
+                    char_data["combo_ref"] = combo_ref
+                    modified = True
+                # Backward-compatible alias until full field migration is complete.
+                if char_data.get("combo_name") != combo_ref:
+                    char_data["combo_name"] = combo_ref
+                    modified = True
+
+                feature_ids = char_data.get("feature_ids", [])
+                if not isinstance(feature_ids, list):
+                    char_data["feature_ids"] = []
+                    modified = True
+
+            if self.db.get("schema_version") != DB_SCHEMA_VERSION:
+                self.db["schema_version"] = DB_SCHEMA_VERSION
+                modified = True
+
+            if modified:
+                self.save_db()
+
+    # Backward-compatible alias for legacy callers.
+    def migrate_combo_references(self):
+        self.migrate_db_schema()
 
     def add_combo(self, combo_name, content):
         """添加或更新出招表"""
-        self.db["combos"][combo_name] = content
-        self.save_db()
+        with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_name)
+            if not combo_ref or self.is_builtin_combo(combo_ref):
+                return
+            self.db["combos"][combo_ref] = content
+            self.save_db()
 
     def delete_combo(self, combo_name):
         """删除出招表"""
-        if combo_name in self.db["combos"]:
-            del self.db["combos"][combo_name]
-            self.save_db()
+        with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_name)
+            if combo_ref in self.db["combos"]:
+                del self.db["combos"][combo_ref]
+                self.save_db()
 
     def get_combo(self, combo_name):
         """获取出招表"""
-        return self.db["combos"].get(combo_name, "")
+        with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_name)
+            if self.is_builtin_combo(combo_ref):
+                return ""
+            return self.db["combos"].get(combo_ref, "")
 
     def get_all_combos(self):
-        combos = list(self.db["combos"].keys())
-        # Append built-in scripts
-        try:
-            from src.char.CharFactory import char_dict
-            prefix = CustomCharManager.get_builtin_prefix()
-            for c_name in char_dict.keys():
-                if c_name != "char_default":
-                    if og.app.locale.name() == "zh_CN" and c_name in char_dict and "cn_name" in char_dict[c_name]:
-                        display_name = char_dict[c_name]["cn_name"]
-                        combos.append(f"{prefix}{display_name} ({c_name})")
-                    else:
-                        combos.append(f"{prefix}{c_name}")
-        except ImportError:
-            pass
-        return combos
+        with self._data_lock:
+            combos = list(self.db["combos"].keys())
+            combos.extend([label for _, label in BuiltinComboRegistry.iter_builtin_pairs()])
+            return combos
+
+    def get_all_combo_items(self):
+        """
+        Return combo options as (label, ref) tuples for UI binding.
+        """
+        with self._data_lock:
+            items = [(name, name) for name in self.db["combos"].keys()]
+            items.extend([(label, combo_ref) for combo_ref, label in BuiltinComboRegistry.iter_builtin_pairs()])
+            return items
 
     def add_character(self, char_name, combo_name):
         """添加或更新角色属性 (不包含特征图)"""
-        if char_name not in self.db["characters"]:
-            self.db["characters"][char_name] = {
-                "combo_name": combo_name,
-                "feature_ids": []
-            }
-        else:
-            self.db["characters"][char_name]["combo_name"] = combo_name
-        self.save_db()
+        with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_name)
+            if char_name not in self.db["characters"]:
+                self.db["characters"][char_name] = {
+                    "combo_ref": combo_ref,
+                    "combo_name": combo_ref,
+                    "feature_ids": []
+                }
+            else:
+                self.db["characters"][char_name]["combo_ref"] = combo_ref
+                self.db["characters"][char_name]["combo_name"] = combo_ref
+            self._invalidate_feature_cache()
+            self.save_db()
 
     def delete_character(self, char_name):
         """删除角色及其所有特征图，不影响出招表"""
-        if char_name in self.db["characters"]:
-            feature_ids = self.db["characters"][char_name].get("feature_ids", [])
-            for fid in feature_ids:
-                self.delete_feature_image(fid)
-            del self.db["characters"][char_name]
-            self.save_db()
+        with self._data_lock:
+            if char_name in self.db["characters"]:
+                feature_ids = self.db["characters"][char_name].get("feature_ids", [])
+                for fid in feature_ids:
+                    self.delete_feature_image(fid)
+                del self.db["characters"][char_name]
+                self._invalidate_feature_cache()
+                self.save_db()
 
     def add_feature_to_character(self, char_name, image_mat, width=0, height=0):
         """为角色保存一张截图并关联特征 UUID"""
-        fid = f"feat_{uuid.uuid4().hex}"
-        self.save_feature_image(fid, image_mat)
-        
-        if "features" not in self.db:
-            self.db["features"] = {}
-        self.db["features"][fid] = {"width": width, "height": height}
-        
-        if char_name not in self.db["characters"]:
-            self.db["characters"][char_name] = {
-                "combo_name": "",
-                "feature_ids": []
-            }
-            
-        if "feature_ids" not in self.db["characters"][char_name]:
-            self.db["characters"][char_name]["feature_ids"] = []
-            
-        self.db["characters"][char_name]["feature_ids"].append(fid)
-        self.save_db()
-        return fid
+        with self._data_lock:
+            fid = f"feat_{uuid.uuid4().hex}"
+            self.save_feature_image(fid, image_mat)
+
+            if "features" not in self.db:
+                self.db["features"] = {}
+            self.db["features"][fid] = {"width": width, "height": height}
+
+            if char_name not in self.db["characters"]:
+                self.db["characters"][char_name] = {
+                    "combo_ref": "",
+                    "combo_name": "",
+                    "feature_ids": []
+                }
+
+            if "feature_ids" not in self.db["characters"][char_name]:
+                self.db["characters"][char_name]["feature_ids"] = []
+
+            self.db["characters"][char_name]["feature_ids"].append(fid)
+            self._invalidate_feature_cache()
+            self.save_db()
+            return fid
 
     def remove_feature_from_character(self, char_name, feature_id):
         """从角色中移除某个特征"""
-        if char_name in self.db["characters"]:
-            feature_ids = self.db["characters"][char_name].get("feature_ids", [])
-            if feature_id in feature_ids:
-                feature_ids.remove(feature_id)
-                self.delete_feature_image(feature_id)
-                self.save_db()
+        with self._data_lock:
+            if char_name in self.db["characters"]:
+                feature_ids = self.db["characters"][char_name].get("feature_ids", [])
+                if feature_id in feature_ids:
+                    feature_ids.remove(feature_id)
+                    self.delete_feature_image(feature_id)
+                    self._invalidate_feature_cache()
+                    self.save_db()
 
     def save_feature_image(self, feature_id, image_mat):
         """保存特征图"""
         path = os.path.join(FEATURES_DIR, f"{feature_id}.png")
-        cv2.imwrite(path, image_mat)
+        ok = cv2.imwrite(path, image_mat)
+        if not ok:
+            raise IOError(f"Failed to write feature image: {path}")
 
     def delete_feature_image(self, feature_id):
         """删除特征图文件并移除 DB 内独立的特征分辨率记录"""
-        if "features" in self.db and feature_id in self.db["features"]:
-            del self.db["features"][feature_id]
-        path = os.path.join(FEATURES_DIR, f"{feature_id}.png")
-        if os.path.exists(path):
-            os.remove(path)
+        with self._data_lock:
+            if "features" in self.db and feature_id in self.db["features"]:
+                del self.db["features"][feature_id]
+            path = os.path.join(FEATURES_DIR, f"{feature_id}.png")
+            if os.path.exists(path):
+                os.remove(path)
 
     def load_feature_image(self, feature_id):
         """读取特征图以及其原始分辨率"""
         path = os.path.join(FEATURES_DIR, f"{feature_id}.png")
         if os.path.exists(path):
             mat = cv2.imread(path)
-            feat_info = self.db.get("features", {}).get(feature_id, {})
+            with self._data_lock:
+                feat_info = self.db.get("features", {}).get(feature_id, {})
             w = feat_info.get("width", 0)
             h = feat_info.get("height", 0)
             return mat, w, h
@@ -191,23 +327,32 @@ class CustomCharManager:
         """比对新截图与所有数据库内特征图，返回(是/否匹配, 匹配到的角色名, 相似度)"""
         current_scr_h, current_scr_w = og.executor.frame.shape[:2]
 
-        current_fids = set()
-        for char_data in self.db["characters"].values():
-            current_fids.update(char_data.get("feature_ids", []))
+        with self._data_lock:
+            character_snapshot = {
+                char_name: list(char_data.get("feature_ids", []))
+                for char_name, char_data in self.db["characters"].items()
+                if isinstance(char_data, dict)
+            }
+            current_fids = set()
+            for feature_ids in character_snapshot.values():
+                current_fids.update(feature_ids)
 
-        # 检查是否需要重新构建特征库
-        if (self._cache_scr_w != current_scr_w or 
-            self._cache_scr_h != current_scr_h or 
-            self._cache_fids != current_fids):
-            
-            self._feature_cache.clear()
-            self._cache_scr_w = current_scr_w
-            self._cache_scr_h = current_scr_h
-            self._cache_fids = current_fids
-            
-            for char_name, char_data in self.db["characters"].items():
-                self._feature_cache[char_name] = {}
-                for fid in char_data.get("feature_ids", []):
+            need_rebuild = (
+                self._cache_scr_w != current_scr_w
+                or self._cache_scr_h != current_scr_h
+                or self._cache_fids != current_fids
+            )
+            if need_rebuild:
+                self._feature_cache.clear()
+                self._cache_scr_w = current_scr_w
+                self._cache_scr_h = current_scr_h
+                self._cache_fids = current_fids
+
+        if need_rebuild:
+            rebuilt_cache = {}
+            for char_name, feature_ids in character_snapshot.items():
+                rebuilt_cache[char_name] = {}
+                for fid in feature_ids:
                     saved_img, w, h = self.load_feature_image(fid)
                     if saved_img is not None:
                         if w != current_scr_w or h != current_scr_h:
@@ -219,12 +364,17 @@ class CustomCharManager:
                             scale = 1
                             resized_saved = saved_img
                         logger.debug(f"loaded {char_name} resized width {current_scr_w} / original_width:{w}, scale_x:{scale}")
-                        self._feature_cache[char_name][fid] = resized_saved
+                        rebuilt_cache[char_name][fid] = resized_saved
+            with self._data_lock:
+                self._feature_cache = rebuilt_cache
+
+        with self._data_lock:
+            cache_snapshot = {char_name: dict(features) for char_name, features in self._feature_cache.items()}
 
         best_match_char = None
         best_similarity = 0.0
 
-        for char_name, cached_features in self._feature_cache.items():
+        for char_name, cached_features in cache_snapshot.items():
             if target_char and char_name != target_char:
                 continue
             for fid, cached_mat in cached_features.items():
@@ -241,7 +391,30 @@ class CustomCharManager:
 
     def get_all_characters(self):
         """获取所有角色数据"""
-        return self.db["characters"]
+        with self._data_lock:
+            characters = {}
+            for char_name, char_data in self.db["characters"].items():
+                if isinstance(char_data, dict):
+                    characters[char_name] = dict(char_data)
+                else:
+                    characters[char_name] = char_data
+            return characters
+
+    def get_character_combo_ref(self, char_name: str) -> str:
+        info = self.get_character_info(char_name) or {}
+        return self.to_combo_ref(info.get("combo_ref", info.get("combo_name", "")))
+
+    def get_character_combo_label(self, char_name: str) -> str:
+        return self.to_combo_label(self.get_character_combo_ref(char_name))
 
     def get_character_info(self, char_name):
-        return self.db["characters"].get(char_name, None)
+        with self._data_lock:
+            char_info = self.db["characters"].get(char_name, None)
+            if isinstance(char_info, dict):
+                combo_ref = self.to_combo_ref(char_info.get("combo_ref", char_info.get("combo_name", "")))
+                out = dict(char_info)
+                out["combo_ref"] = combo_ref
+                # Backward-compatible alias for existing call sites.
+                out["combo_name"] = combo_ref
+                return out
+            return char_info

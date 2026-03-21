@@ -27,9 +27,9 @@ class CustomChar(BaseChar):
     def _load_combo(self):
         char_info = self.manager.get_character_info(self.char_name)
         if char_info:
-            combo_name = char_info.get("combo_name", "")
-            self.combo_name = combo_name
-            self.combo_str = self.manager.get_combo(combo_name)
+            combo_ref = self.manager.to_combo_ref(char_info.get("combo_name", ""))
+            self.combo_name = self.manager.to_combo_label(combo_ref)
+            self.combo_str = self.manager.get_combo(combo_ref)
             self._compile_combo()
         else:
             self.logger.warning(f"No custom char info found for {self.char_name}")
@@ -45,8 +45,6 @@ class CustomChar(BaseChar):
     @classmethod
     def get_command_definitions(cls) -> List[Cmd]:
         # 统一在此处配置所有可用指令：指令名、对应内置函数
-        # 这些文案在运行时不会变动：集中成“常量”避免静态扫描工具提示重复字面量，
-        # 同时保持下方清单的直观可读性。
         PARAM_NONE = "无参数"
         PARAM_OPT_DURATION = "持续时间(s)，选填"
         PARAM_OPT_KEY = "按键，选填"
@@ -76,57 +74,104 @@ class CustomChar(BaseChar):
         if not self.combo_str:
             return
 
-        aliases = {cmd.name: cmd.func for cmd in self.get_command_definitions()}
+        parsed_combo, error = self.compile_combo_text(self.combo_str)
+        if error:
+            self.logger.error(f"Syntax error parsing combo '{self.combo_str}': {error}")
+            return
+        self.parsed_combo = parsed_combo
+
+    @staticmethod
+    def _node_loc(node) -> str:
+        line = getattr(node, "lineno", None)
+        col = getattr(node, "col_offset", None)
+        if line is None:
+            return ""
+        col_num = (col + 1) if isinstance(col, int) else 1
+        return f"line {line}, column {col_num}"
+
+    @staticmethod
+    def _syntax_error_text(error: SyntaxError) -> str:
+        line = error.lineno or 1
+        col = error.offset or 1
+        return f"line {line}, column {col}: {error.msg}"
+
+    @classmethod
+    def _parse_node_value(cls, node):
+        try:
+            return True, ast.literal_eval(node), ""
+        except (ValueError, SyntaxError):
+            if isinstance(node, ast.Name):
+                return True, node.id, ""
+            return False, None, f"{cls._node_loc(node)}: unsupported value expression"
+
+    @classmethod
+    def compile_combo_text(cls, combo_str: str):
+        """
+        Compile combo text into executable tuples.
+        Returns (parsed_combo, error_message). error_message is None when valid.
+        """
+        parsed_combo = []
+        if not combo_str or not combo_str.strip():
+            return parsed_combo, None
+
+        aliases = {cmd.name: cmd.func for cmd in cls.get_command_definitions()}
 
         try:
-            tree = ast.parse(self.combo_str)
-        except SyntaxError as e:
-            self.logger.error(f"Syntax error parsing combo '{self.combo_str}': {e}")
-            return
+            tree = ast.parse(combo_str)
+        except SyntaxError as error:
+            return [], cls._syntax_error_text(error)
 
-        if not tree.body:
-            return
+        for stmt in tree.body:
+            if not isinstance(stmt, ast.Expr):
+                return [], f"{cls._node_loc(stmt)}: only command expressions are allowed"
 
-        expr = tree.body[0].value
-        nodes = expr.elts if isinstance(expr, ast.Tuple) else [expr]
+            expr = stmt.value
+            nodes = expr.elts if isinstance(expr, ast.Tuple) else [expr]
+            for node in nodes:
+                func_name = ""
+                args = []
+                kwargs = {}
 
-        for node in nodes:
-            func_name = ""
-            args = []
-            kwargs = {}
+                if isinstance(node, ast.Name):
+                    func_name = node.id
+                elif isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Name):
+                        func_name = node.func.id
+                    else:
+                        return [], f"{cls._node_loc(node)}: unsupported callable expression"
 
-            if isinstance(node, ast.Name):
-                func_name = node.id
-            elif isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Name):
-                    func_name = node.func.id
+                    for arg in node.args:
+                        ok, value, err = cls._parse_node_value(arg)
+                        if not ok:
+                            return [], err
+                        args.append(value)
 
-                for arg in node.args:
-                    try:
-                        args.append(ast.literal_eval(arg))
-                    except ValueError:
-                        if isinstance(arg, ast.Name):
-                            args.append(arg.id)
-                        else:
-                            self.logger.warning(f"Unsupported argument: {arg}")
+                    for kw in node.keywords:
+                        if kw.arg is None:
+                            return [], f"{cls._node_loc(kw)}: **kwargs syntax is not supported"
+                        ok, value, err = cls._parse_node_value(kw.value)
+                        if not ok:
+                            return [], err
+                        kwargs[kw.arg] = value
+                else:
+                    return [], f"{cls._node_loc(node)}: unsupported syntax '{type(node).__name__}'"
 
-                for kw in node.keywords:
-                    try:
-                        kwargs[kw.arg] = ast.literal_eval(kw.value)
-                    except ValueError:
-                        if isinstance(kw.value, ast.Name):
-                            kwargs[kw.arg] = kw.value.id
-                        else:
-                            self.logger.warning(f"Unsupported kwarg: {kw.value}")
-            else:
-                self.logger.warning(f"Unsupported syntax in combo: {type(node)}")
-                continue
+                if not func_name:
+                    return [], f"{cls._node_loc(node)}: command name is required"
 
-            if not func_name:
-                continue
+                target = aliases.get(func_name, func_name)
+                if not callable(target) and not hasattr(cls, func_name):
+                    return [], f"{cls._node_loc(node)}: unknown command '{func_name}'"
 
-            target = aliases.get(func_name, func_name)
-            self.parsed_combo.append((func_name, target, args, kwargs, func_name))
+                cmd_text = ast.get_source_segment(combo_str, node) or func_name
+                parsed_combo.append((func_name, target, args, kwargs, cmd_text))
+
+        return parsed_combo, None
+
+    @classmethod
+    def validate_combo_syntax(cls, combo_str: str):
+        _, error = cls.compile_combo_text(combo_str)
+        return error is None, error
 
     def _execute_parsed_combo(self):
         """战斗时极速遍历并执行已缓存的指令队列"""

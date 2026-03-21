@@ -21,29 +21,19 @@ char_names = char_dict.keys()
 
 def _build_char_instance(task, index, match_name, sim, manager):
     from src.char.custom.CustomChar import CustomChar
-    from src.ui.CharManagerTab import get_builtin_prefix
-    import re
 
     char_info = manager.get_character_info(match_name)
-    combo_name = char_info.get("combo_name", "") if char_info else ""
+    combo_ref = manager.to_combo_ref(char_info.get("combo_name", "")) if char_info else ""
     
-    if not combo_name:
+    if not combo_ref:
         return BaseChar(task, index, char_name=match_name, confidence=sim)
 
-    builtin_prefix = get_builtin_prefix()
-    if combo_name.startswith(builtin_prefix):
-        # Format is "[内置代码] 零 (char_zero)", we extract "char_zero"
-        match = re.search(r'\(([^)]+)\)$', combo_name)
-        if match:
-            builtin_key = match.group(1).strip()
-        else:
-            builtin_key = combo_name.replace(builtin_prefix, "").strip()
-            
-        if builtin_key in char_dict:
-            cls: 'BaseChar' = char_dict[builtin_key].get('cls', BaseChar)
-            instance = cls(task, index, char_name=match_name, confidence=sim)
-            instance.combo_name = combo_name
-            return instance
+    builtin_key = manager.get_builtin_key(combo_ref)
+    if builtin_key and builtin_key in char_dict:
+        cls: 'BaseChar' = char_dict[builtin_key].get('cls', BaseChar)
+        instance = cls(task, index, char_name=match_name, confidence=sim)
+        instance.combo_name = manager.to_combo_label(combo_ref)
+        return instance
     
     # Otherwise return default parsed CustomChar
     return CustomChar(task, index, char_name=match_name, confidence=sim)

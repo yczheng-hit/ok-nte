@@ -1,10 +1,12 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import json
 
 import numpy as np
 from ok.test.TaskTestCase import TaskTestCase
 
 from src.char.custom.CustomChar import CustomChar
+from src.char.custom.BuiltinComboRegistry import BuiltinComboRegistry
 from src.char.custom.CustomCharManager import CustomCharManager
 from src.config import config
 from src.tasks.trigger.AutoCombatTask import AutoCombatTask
@@ -209,6 +211,83 @@ class TestCustomChar(TaskTestCase):
 
         # 槽位 2: 未收到掃描結果，應被清空並寫著無畫面
         self.assertEqual(tab.slots[2].status.text(), TeamScannerTab.tr_no_feature)
+
+    def test_builtin_combo_roundtrip(self):
+        builtin_ref = "builtin:char_zero"
+        builtin_label = self.manager.to_combo_label(builtin_ref)
+
+        self.assertTrue(self.manager.is_builtin_combo(builtin_ref))
+        self.assertTrue(self.manager.is_builtin_combo(builtin_label))
+        self.assertEqual(self.manager.to_combo_ref(builtin_label), builtin_ref)
+
+        self.manager.add_character("char_builtin", builtin_label)
+        char_info = self.manager.get_character_info("char_builtin")
+        assert char_info is not None
+        self.assertEqual(char_info["combo_name"], builtin_ref)
+
+        combos = self.manager.get_all_combos()
+        self.assertIn(builtin_label, combos)
+        self.assertNotIn(builtin_ref, combos)
+
+        combo_items = self.manager.get_all_combo_items()
+        self.assertIn((builtin_label, builtin_ref), combo_items)
+
+    def test_migrate_legacy_builtin_combo_name(self):
+        import src.char.custom.CustomCharManager as manager_module
+
+        legacy_label = self.manager.to_combo_label("builtin:char_zero")
+        with open(manager_module.DB_PATH, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "combos": {},
+                    "characters": {
+                        "legacy_char": {
+                            "combo_name": legacy_label,
+                            "feature_ids": []
+                        }
+                    },
+                    "features": {}
+                },
+                f,
+                ensure_ascii=False,
+                indent=2
+            )
+
+        CustomCharManager._instance = None
+        migrated_manager = CustomCharManager()
+        migrated_info = migrated_manager.get_character_info("legacy_char")
+        assert migrated_info is not None
+        self.assertEqual(migrated_info["combo_name"], "builtin:char_zero")
+
+    def test_char_factory_uses_builtin_ref_without_ui_import(self):
+        from src.char.CharFactory import _build_char_instance
+        from src.char.Zero import Zero
+
+        self.manager.add_character("builtin_char", "builtin:char_zero")
+        instance = _build_char_instance(self.task, 0, "builtin_char", 0.95, self.manager)
+        self.assertIsInstance(instance, Zero)
+
+    def test_builtin_label_disambiguates_duplicate_cn_name(self):
+        fake_entries = {
+            "char_a": {"cn_name": "重名"},
+            "char_b": {"cn_name": "重名"},
+            "char_c": {"cn_name": "唯一名"},
+        }
+
+        with (
+            patch.object(BuiltinComboRegistry, "_get_builtin_entries", return_value=fake_entries),
+            patch.object(BuiltinComboRegistry, "_legacy_prefix", return_value="[内置代码] "),
+            patch.object(BuiltinComboRegistry, "_locale_name", return_value="zh_CN"),
+        ):
+            label_a = BuiltinComboRegistry.to_label("builtin:char_a")
+            label_b = BuiltinComboRegistry.to_label("builtin:char_b")
+            label_c = BuiltinComboRegistry.to_label("builtin:char_c")
+
+            self.assertEqual(label_a, "[内置代码] 重名 (char_a)")
+            self.assertEqual(label_b, "[内置代码] 重名 (char_b)")
+            self.assertEqual(label_c, "[内置代码] 唯一名")
+            self.assertEqual(BuiltinComboRegistry.to_ref(label_a), "builtin:char_a")
+            self.assertEqual(BuiltinComboRegistry.to_ref(label_b), "builtin:char_b")
 
 if __name__ == '__main__':
     unittest.main()
