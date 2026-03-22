@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout,
                                QVBoxLayout, QWidget, QFileDialog)
 
@@ -15,6 +15,9 @@ import zipfile
 import shutil
 import subprocess
 from pathlib import Path
+import requests
+import threading
+import platform
 
 
 def get_builtin_prefix():
@@ -23,6 +26,7 @@ def get_builtin_prefix():
 
 
 class CharManagerTab(CustomTab):
+    doc_translation_ready = Signal(str, str)
 
     def __init__(self):
         super().__init__()
@@ -46,6 +50,9 @@ class CharManagerTab(CustomTab):
         
         self.icon = FluentIcon.PEOPLE
         self.manager = CustomCharManager()
+        self._doc_cache_by_locale = {}
+        self._doc_translation_pending_locales = set()
+        self.doc_translation_ready.connect(self._on_doc_translation_ready)
 
         # main layout
         self.main_h_layout = QHBoxLayout(self)
@@ -574,11 +581,121 @@ class CharManagerTab(CustomTab):
             from src.char.custom.CustomChar import CustomChar
             docs = CustomChar.get_available_commands()
             text = "可以在出招表中输入以下指令 (以逗号分隔):\n\n"
-            for cmd in docs:
-                text += f"▶ 【{cmd.name}】\n"
-                text += f"    • 参数: {cmd.params or '无'}\n"
-                text += f"    • 说明: {cmd.doc or '无'}\n"
-                text += f"    • 示例: {cmd.example or cmd.name}\n\n"
-            return text
+            translatable_text = "可以在出招表中输入以下指令 (以逗号分隔):\n\n"
+            empty_text = "无"
+            protected_literals = {}
+            for index, cmd in enumerate(docs):
+                cmd_name = str(cmd.name)
+                cmd_example = str(cmd.example or cmd_name)
+                name_token = f"__CMD_NAME_{index}__"
+                example_token = f"__CMD_EXAMPLE_{index}__"
+                protected_literals[name_token] = cmd_name
+                protected_literals[example_token] = cmd_example
+
+                text += f"▶ 【{cmd_name}】\n"
+                text += f"    • 参数: {cmd.params or empty_text}\n"
+                text += f"    • 说明: {cmd.doc or empty_text}\n"
+                text += f"    • 示例: {cmd_example}\n\n"
+
+                translatable_text += f"▶ 【{name_token}】\n"
+                translatable_text += f"    • 参数: {cmd.params or empty_text}\n"
+                translatable_text += f"    • 说明: {cmd.doc or empty_text}\n"
+                translatable_text += f"    • 示例: {example_token}\n\n"
+
+            locale_name = self._locale_name()
+            if not locale_name or locale_name == "zh_CN":
+                return text
+
+            if locale_name in self._doc_cache_by_locale:
+                return self._doc_cache_by_locale[locale_name]
+
+            if locale_name not in self._doc_translation_pending_locales:
+                self._doc_translation_pending_locales.add(locale_name)
+                self._start_doc_translation(text, translatable_text, locale_name, protected_literals)
+            return text + "\n\n[Translating with Google...]"
         except Exception as e:
             return f"生成文档失败: {e}"
+
+    def _start_doc_translation(
+        self,
+        source_text: str,
+        translatable_text: str,
+        locale_name: str,
+        protected_literals: dict[str, str],
+    ):
+        threading.Thread(
+            target=self._translate_doc_worker,
+            args=(source_text, translatable_text, locale_name, protected_literals),
+            daemon=True,
+        ).start()
+
+    def _translate_doc_worker(
+        self,
+        source_text: str,
+        translatable_text: str,
+        locale_name: str,
+        protected_literals: dict[str, str],
+    ):
+        try:
+            target_lang = locale_name.replace("_", "-")
+            translated_text = self._google_translate_text(translatable_text, target_lang)
+            translated_text = self._restore_protected_literals(translated_text, protected_literals)
+            translated_text = f"[Translated by Google]\n\n{translated_text}"
+        except Exception as translate_error:
+            self.logger.warning(f"Google translate failed for locale '{locale_name}': {translate_error}")
+            translated_text = source_text + "\n\n[Google Translate unavailable, showing zh_CN source text]"
+        self.doc_translation_ready.emit(locale_name, translated_text)
+
+    @Slot(str, str)
+    def _on_doc_translation_ready(self, locale_name: str, translated_text: str):
+        self._doc_translation_pending_locales.discard(locale_name)
+        self._doc_cache_by_locale[locale_name] = translated_text
+        if self._locale_name() == locale_name and hasattr(self, "doc_content"):
+            self.doc_content.setPlainText(translated_text)
+
+    @staticmethod
+    def _locale_name() -> str:
+        app = getattr(og, "app", None)
+        if app and hasattr(app, "locale"):
+            try:
+                return app.locale.name()
+            except Exception:
+                return ""
+        return ""
+
+    @staticmethod
+    def _google_translate_text(text: str, target_lang: str) -> str:
+        os_info = platform.system()
+        ua = f"Mozilla/5.0 ({os_info}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={
+                "client": "gtx",
+                "sl": "auto",
+                "tl": target_lang,
+                "dt": "t",
+                "q": text,
+            },
+            headers={
+                "User-Agent": ua
+            },
+            timeout=4,
+        )
+        response.raise_for_status()
+        data = response.json()
+        segments = data[0] if isinstance(data, list) and data else []
+        translated = "".join(
+            segment[0]
+            for segment in segments
+            if isinstance(segment, list) and segment and segment[0]
+        )
+        if not translated:
+            raise ValueError("Google translate returned empty content")
+        return translated
+
+    @staticmethod
+    def _restore_protected_literals(text: str, literals: dict[str, str]) -> str:
+        restored = text
+        for token, value in literals.items():
+            restored = restored.replace(token, value)
+        return restored
