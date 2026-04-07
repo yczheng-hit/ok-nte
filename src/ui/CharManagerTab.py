@@ -1,16 +1,17 @@
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout,
-                               QVBoxLayout, QWidget, QFileDialog)
+from PySide6.QtCore import Qt, Signal, Slot, QTimer
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QGraphicsBlurEffect,
+                               QVBoxLayout, QWidget, QFileDialog, QGraphicsDropShadowEffect)
 
-from qfluentwidgets import (CardWidget, EditableComboBox, FluentIcon,
+from qfluentwidgets import (CardWidget, EditableComboBox, FluentIcon, QColor,
                             ImageLabel, ListWidget, PrimaryPushButton, InfoBar, InfoBarPosition,
                             PushButton, SubtitleLabel, TextEdit, TitleLabel, TransparentToolButton,
-                            MessageBoxBase, LineEdit)
+                            MessageBoxBase, LineEdit, PrimaryToolButton, SmoothScrollArea, SimpleCardWidget,
+                            isDarkTheme)
 
 from ok import og
 from ok.gui.widget.CustomTab import CustomTab
 from src.char.custom.CustomCharManager import CustomCharManager
-from src.ui.TeamScannerTab import cv_to_pixmap
+from src.ui.common import cv_to_pixmap, char_manager_signals
 import json
 import zipfile
 import shutil
@@ -25,32 +26,38 @@ def get_builtin_prefix():
     # Backward-compatible export for modules that still import this symbol.
     return CustomCharManager.get_builtin_prefix()
 
+def tr_fmt(text_id, **kwargs):
+    t = og.app.tr(text_id)
+    for k, v in kwargs.items():
+        t = t.replace(f'{{{k}}}', str(v))
+    return t
 
 class CharManagerTab(CustomTab):
     doc_translation_ready = Signal(str, str)
 
     def __init__(self):
         super().__init__()
+        self.tr_combo_title = og.app.tr('出招表')
         self.tr_save_success = og.app.tr('保存成功')
-        self.tr_combo_msg = og.app.tr('出招表: {} 绑定成功')
+        self.tr_combo_msg = tr_fmt('{combo_title}: {} 绑定成功', combo_title=self.tr_combo_title)
         self.tr_del_success = og.app.tr('删除成功')
         self.tr_del_char_msg = og.app.tr('已成功删除角色: {} 以及关联的特征图')
         self.tr_unbind_success = og.app.tr('解除绑定')
-        self.tr_unbind_msg = og.app.tr('已解除 {} 的出招表绑定')
+        self.tr_unbind_msg = tr_fmt('已解除 {} 的{combo_title}绑定', combo_title=self.tr_combo_title)
         self.tr_import_data = og.app.tr("导入数据")
         self.tr_import_failed = og.app.tr("导入失败")
         self.tr_import_success = og.app.tr("导入成功")
         self.tr_import_msg = og.app.tr("已导入 {} 个文件")
-        self.tr_combo_invalid_title = og.app.tr("出招表语法错误")
+        self.tr_combo_invalid_title = tr_fmt("{combo_title}语法错误", combo_title=self.tr_combo_title)
         self.tr_edit_char_name = og.app.tr("编辑名称")
         self.tr_rename_failed_title = og.app.tr("重命名失败")
         self.tr_rename_failed = og.app.tr("角色名称无效或已存在")
         self.tr_rename_msg = og.app.tr("角色已重命名为: {}")
         
         self.tr_name = og.app.tr('角色管理')
-        self.tr_choose_char = og.app.tr('👈 请在左侧选择一个角色以管理特征和出招表')
+        self.tr_choose_char = tr_fmt('👈 请在左侧选择一个角色以管理特征和{combo_title}', combo_title=self.tr_combo_title)
         self.tr_delete = og.app.tr('删除')
-        self.tr_unbound_text = og.app.tr('当前未绑定任何出招表。\n遇到此角色将默认使用基础通用脚本(BaseChar)。')
+        self.tr_unbound_text = tr_fmt('当前未绑定任何{combo_title}。\n遇到此角色将默认使用基础通用脚本(BaseChar)。', combo_title=self.tr_combo_title)
         self.tr_builtin_text = og.app.tr('此为内建 Python 脚本，不可在此修改。\n请在对应的源文件中直接修改代码。')
         
         self.icon = FluentIcon.PEOPLE
@@ -58,6 +65,7 @@ class CharManagerTab(CustomTab):
         self._doc_cache_by_locale = {}
         self._doc_translation_pending_locales = set()
         self.doc_translation_ready.connect(self._on_doc_translation_ready)
+        char_manager_signals.refresh_tab.connect(self.refresh_list)
 
         # main layout
         self.main_h_layout = QHBoxLayout(self)
@@ -99,38 +107,50 @@ class CharManagerTab(CustomTab):
         self.detail_h_layout = QHBoxLayout()
 
         self.char_title = TitleLabel(self.tr_choose_char)
-        self.char_title.margin
         self.detail_h_layout.addWidget(self.char_title)
 
         self.char_name_edit_btn = TransparentToolButton(FluentIcon.EDIT)
         self.char_name_edit_btn.setToolTip(self.tr_edit_char_name)
         self.char_name_edit_btn.clicked.connect(self.on_edit_char_name)
         self.char_name_edit_btn.hide()
-        self.detail_h_layout.addWidget(self.char_name_edit_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.detail_h_layout.addWidget(self.char_name_edit_btn, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
         self.detail_h_layout.addStretch(1) 
         self.detail_v_layout.addLayout(self.detail_h_layout)
 
         # === 特征图区 ===
-        self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("已绑定的特征图")))
+        # self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("已绑定的特征图")))
 
+        self.feature_scroll = SmoothScrollArea()
+        self.feature_scroll.setWidgetResizable(True)
+        
         self.feature_grid_widget = QWidget()
         self.feature_grid = QGridLayout(self.feature_grid_widget)
-        self.detail_v_layout.addWidget(self.feature_grid_widget)
+        
+        self.feature_scroll.setWidget(self.feature_grid_widget)
+        self.feature_scroll.enableTransparentBackground()
+        
+        self.feature_scroll_card = SimpleCardWidget()
+        self.feature_scroll_card_layout = QVBoxLayout(self.feature_scroll_card)
+        self.feature_scroll_card_layout.setContentsMargins(2, 2, 2, 2)
+        self.feature_scroll_card.setFixedHeight(20)
+        self.feature_scroll_card_layout.addWidget(self.feature_scroll)
+
+        self.detail_v_layout.addWidget(self.feature_scroll_card)
 
         # === 出招表区 ===
-        self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("出招表 (Combo)")))
+        self.detail_v_layout.addWidget(SubtitleLabel(self.tr_combo_title))
 
         self.combo_h_layout = QHBoxLayout()
         self.combo_select = EditableComboBox()
-        self.combo_select.setPlaceholderText(og.app.tr("选择或输入出招表名 (按下回车即可创建)"))
+        self.combo_select.setPlaceholderText(tr_fmt("选择或输入{combo_title}名 (按下回车即可创建)", combo_title=self.tr_combo_title))
         self.combo_select.currentTextChanged.connect(self.on_combo_changed)
         self.combo_h_layout.addWidget(self.combo_select, 1)
 
-        self.combo_unbind_btn = PushButton(FluentIcon.LINK, og.app.tr("解除绑定"))
+        self.combo_unbind_btn = PushButton(FluentIcon.LINK, self.tr_unbind_success)
         self.combo_unbind_btn.clicked.connect(self.on_unbind_combo)
         self.combo_h_layout.addWidget(self.combo_unbind_btn)
 
-        self.combo_delete_btn = PushButton(FluentIcon.DELETE, og.app.tr("删除"))
+        self.combo_delete_btn = PushButton(FluentIcon.DELETE, self.tr_delete)
         self.combo_delete_btn.clicked.connect(self.on_delete_combo)
         self.combo_h_layout.addWidget(self.combo_delete_btn)
 
@@ -161,8 +181,8 @@ class CharManagerTab(CustomTab):
         self.doc_content.setPlainText(self.generate_doc())
         self.detail_v_layout.addWidget(self.doc_content)
 
-        self.main_h_layout.addWidget(self.left_widget,1)
-        self.main_h_layout.addWidget(self.detail_widget,3)
+        self.main_h_layout.addWidget(self.left_widget, 1)
+        self.main_h_layout.addWidget(self.detail_widget, 4)
 
         self.current_char = None
         self.refresh_list()
@@ -172,6 +192,8 @@ class CharManagerTab(CustomTab):
         return self.tr_name
 
     def refresh_list(self):
+        select = self.list_widget.currentItem()
+        select_text = select.text() if select else None
         self.current_char = None
         self.list_widget.blockSignals(True)
         self.list_widget.clear()
@@ -192,6 +214,11 @@ class CharManagerTab(CustomTab):
             widget = self.feature_grid.itemAt(i).widget()
             if widget:
                 widget.setParent(None)
+
+        if select_text:
+            items = self.list_widget.findItems(select_text, Qt.MatchFlag.MatchExactly)
+            if items:
+                self.list_widget.setCurrentItem(items[0])
 
     def on_export_data(self):
         downloads_path = Path.home() / "Downloads"
@@ -375,28 +402,31 @@ class CharManagerTab(CustomTab):
         for fid in feature_ids:
             img_mat, w, h = self.manager.load_feature_image(fid)
             if img_mat is not None:
-                lbl = ImageLabel()
-                lbl.setFixedSize(50, 50)
-                lbl.setImage(cv_to_pixmap(img_mat).scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-                card = CardWidget()
-                card.setFixedSize(80, 110)
-                cv = QVBoxLayout(card)
-                cv.setContentsMargins(5, 5, 5, 5)
-                cv.setSpacing(2)
-                cv.addWidget(lbl, alignment=Qt.AlignCenter)
-                del_btn = PushButton(self.tr_delete, card)
-                
-                # Capture current fid in closure correctly
-                def make_deleter(captured_fid):
-                    return lambda checked: self.on_delete_feature(captured_fid)
-                del_btn.clicked.connect(make_deleter(fid))
-                
-                cv.addWidget(del_btn)
-                self.feature_grid.addWidget(card, row, col)
+                card = FeatureCard(fid, img_mat, self.on_delete_feature)
+                self.feature_grid.addWidget(card, row, col, Qt.AlignmentFlag.AlignTop)
                 col += 1
                 if col > 5:
                     col = 0
                     row += 1
+
+        #Test Code
+        # for i in range(10):
+        #     test_fid = f"test_feature_{i}"
+        #     if img_mat is not None:
+        #         card = FeatureCard(test_fid, img_mat, lambda fid: None)
+        #         self.feature_grid.addWidget(card, row, col, Qt.AlignmentFlag.AlignTop)
+        #         col += 1
+        #         if col > 5:
+        #             col = 0
+        #             row += 1
+
+        QTimer.singleShot(0, self._adjust_feature_scroll_height)
+
+    def _adjust_feature_scroll_height(self):
+        if not hasattr(self, 'feature_grid_widget') or not self.feature_grid_widget:
+            return
+        content_height = self.feature_grid_widget.sizeHint().height() + 8
+        self.feature_scroll_card.setFixedHeight(min(220, max(0, content_height)))
 
     def on_delete_feature(self, fid):
         if self.current_char:
@@ -785,3 +815,55 @@ class CharManagerTab(CustomTab):
         for token, value in literals.items():
             restored = restored.replace(token, value)
         return restored
+
+class FeatureCard(CardWidget):
+    def __init__(self, fid, img_mat, delete_callback, parent=None):
+        super().__init__(parent)
+        self.fid = fid
+        self.delete_callback = delete_callback
+        
+        self.shadow_effect = QGraphicsDropShadowEffect(self)
+        self.shadow_effect.setBlurRadius(15)
+        self.shadow_effect.setOffset(4, 4)
+        self.shadow_effect.setColor(QColor(0, 0, 0, 40))
+        self.setGraphicsEffect(self.shadow_effect)
+        
+        # 1. 图片组件
+        self.lbl = ImageLabel()
+        self.lbl.setImage(cv_to_pixmap(img_mat).scaled(70, 70, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        
+        # 2. 布局
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.addWidget(self.lbl, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # 3. 删除按钮
+        self.del_btn = PrimaryToolButton(FluentIcon.CLOSE, self)
+        self.del_btn.hide()
+        self.del_btn.setFixedSize(30, 30)
+        self.del_btn.clicked.connect(lambda: self.delete_callback(self.fid))
+        
+        # 4. 设置初始尺寸
+        lbl_size = self.lbl.sizeHint()
+        self.setFixedSize(lbl_size.width() + 30, lbl_size.height() + 30)
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        center_x = (self.width() - self.del_btn.width()) // 2
+        center_y = (self.height() - self.del_btn.height()) // 2
+        self.del_btn.move(center_x, center_y)
+
+    def enterEvent(self, e):
+        blur = QGraphicsBlurEffect(self)
+        blur.setBlurRadius(15)
+        self.lbl.setGraphicsEffect(blur)
+        self.del_btn.show()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self.lbl.setGraphicsEffect(None)
+        self.del_btn.hide()
+        super().leaveEvent(e)
+
+    def _normalBackgroundColor(self):
+        return QColor(255, 255, 255, 25 if isDarkTheme() else 170)

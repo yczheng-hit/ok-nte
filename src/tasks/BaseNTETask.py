@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from typing import List
 import time
-import re
 
 from ok import BaseTask, Box
 from src.scene.NTEScene import NTEScene
@@ -27,11 +26,14 @@ class BaseNTETask(BaseTask):
     def in_team(self):
         if not self.is_in_team():
             return False, -1, 0
+
+        def process_char_text(image):
+            return binarize_bgr_by_brightness(image, threshold=180)
         
-        c1 = self.find_one(Labels.char_1_text, threshold=0.7, frame_processor=binarize_bgr_by_adaptive_brightness)
-        c2 = self.find_one(Labels.char_2_text, threshold=0.7, frame_processor=binarize_bgr_by_adaptive_brightness)
-        c3 = self.find_one(Labels.char_3_text, threshold=0.7, frame_processor=binarize_bgr_by_adaptive_brightness)
-        c4 = self.find_one(Labels.char_4_text, threshold=0.7, frame_processor=binarize_bgr_by_adaptive_brightness)
+        c1 = self.find_one(Labels.char_1_text, threshold=0.7, frame_processor=process_char_text, mask_function=mask_outside_white_rect)
+        c2 = self.find_one(Labels.char_2_text, threshold=0.7, frame_processor=process_char_text, mask_function=mask_outside_white_rect)
+        c3 = self.find_one(Labels.char_3_text, threshold=0.7, frame_processor=process_char_text, mask_function=mask_outside_white_rect)
+        c4 = self.find_one(Labels.char_4_text, threshold=0.7, frame_processor=process_char_text, mask_function=mask_outside_white_rect)
         arr: List[Box | None] = [c1, c2, c3, c4]
         self.log_debug(f"in_team {arr}")
         current = -1
@@ -274,11 +276,27 @@ def mask_corners(image, ratio_w=0.5555, ratio_h=0.8571):
         np.array([pt1_br, pt2_br, pt3_br], dtype=np.int32)
     ]
     
-    # 在掩码图上填充黑色
+    # 在掩码图上填充白色
     white = np.ones_like(image) * 255
     result = cv2.fillPoly(white, contours, (0, 0, 0)) # 黑色填充
     
     return result
+
+def mask_outside_white_rect(image):
+    # 转为灰度图以便寻找白色像素边界
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # 获得图像内白色部份的矩形范围边界
+    x, y, w, h = cv2.boundingRect(gray)
+    
+    # 创建与原图等大且全黑的 mask
+    mask = np.zeros_like(image)
+    
+    # 将矩形范围内设为全白 (保留作为mask)
+    if w > 0 and h > 0:
+        mask[y:y+h, x:x+w] = 255
+        
+    return mask
 
 def display_image(image, name="image"):
     cv2.imshow(name, image)

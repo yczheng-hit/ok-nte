@@ -2,4 +2,5 @@ ok-script
 onnxocr-ppocrv5
 openvino
 opencv-python
+pyside6==6.9.1
 scikit-image

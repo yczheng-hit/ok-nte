@@ -136,8 +136,7 @@ config = {
         # ["src.tasks.MyTriggerTask", "MyTriggerTask"],
     ],
     'custom_tabs': [
-        ['src.ui.TeamScannerTab', 'TeamScannerTab'],
-        ['src.ui.CharManagerTab', 'CharManagerTab'],
+        ['src.ui.CharHubTab', 'CharHubTab']
         # ['src.ui.MyTab', 'MyTab'], #可选, 自定义UI, 显示在侧边栏
     ],
     'scene': ["src.scene.NTEScene", "NTEScene"],

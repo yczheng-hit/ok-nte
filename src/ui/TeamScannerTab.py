@@ -10,6 +10,7 @@ from ok import og
 from ok.gui.widget.CustomTab import CustomTab
 from src.char.custom.CustomCharManager import CustomCharManager
 from src.tasks.trigger.AutoCombatTask import AutoCombatTask, scanner_signals
+from src.ui.common import char_manager_signals, cv_to_pixmap
 
 
 class NewCharDialog(MessageBoxBase):
@@ -138,6 +139,7 @@ class SlotCard(CardWidget):
                 self.manager.add_feature_to_character(char_name, self.current_mat, width=self.current_w, height=self.current_h)
                 self.manager.add_character(char_name, combo_name)
                 self.update_result(self.current_mat, self.current_w, self.current_h, char_name)
+                char_manager_signals.refresh_tab.emit()
 
 
 class TeamScannerTab(CustomTab):
@@ -149,7 +151,7 @@ class TeamScannerTab(CustomTab):
         self.tr_analyzing = og.app.tr("正在分析...")
         self.tr_no_feature = og.app.tr("未获取到特征")
         self.tr_name_tab = og.app.tr("扫描队伍")
-        self.tr_header = og.app.tr("队伍角色扫描")
+        # self.tr_header = og.app.tr("队伍角色扫描")
         self.tr_desc = og.app.tr("未识别也可自动战斗，将使用通用脚本(BaseChar)")
 
         self.manager = manager or CustomCharManager()
@@ -161,12 +163,12 @@ class TeamScannerTab(CustomTab):
         self.vbox.setSpacing(20)
 
         # Header
-        self.header = SubtitleLabel(self.tr_header)
+        # self.header = SubtitleLabel(self.tr_header)
         self.scan_btn = PrimaryPushButton(FluentIcon.SYNC, self.tr_scan_btn)
         self.scan_btn.setFixedWidth(250)
         self.scan_btn.clicked.connect(self.on_scan_clicked)
 
-        self.vbox.addWidget(self.header)
+        # self.vbox.addWidget(self.header)
         self.vbox.addWidget(self.scan_btn)
 
         # Cards Layout
@@ -228,22 +230,3 @@ class TeamScannerTab(CustomTab):
             if i not in updated_indices:
                 self.slots[i].update_result(None, 0, 0, "")
                 self.slots[i].status.setText(self.tr_no_feature)
-
-
-def cv_to_pixmap(cv_img):
-    if cv_img is None or getattr(cv_img, 'size', 0) == 0:
-        return QPixmap()
-    if not cv_img.flags['C_CONTIGUOUS']:
-        cv_img = cv_img.copy()
-    height, width = cv_img.shape[:2]
-    channels = cv_img.shape[2] if len(cv_img.shape) > 2 else 1
-    bytes_per_line = channels * width
-
-    if channels == 3:
-        qimg = QImage(cv_img.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
-    elif channels == 4:
-        qimg = QImage(cv_img.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888).rgbSwapped()
-    else:
-        qimg = QImage(cv_img.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
-
-    return QPixmap.fromImage(qimg)

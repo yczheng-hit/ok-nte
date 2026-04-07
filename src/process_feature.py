@@ -6,7 +6,7 @@ from ok.feature.Feature import Feature
 
 def process_feature(feature_name, feature: Feature):
     if feature_name in char_labels:
-        feature.mat = binarize_bgr_by_adaptive_brightness(feature.mat)
+        feature.mat = binarize_bgr_by_brightness(feature.mat, threshold=180)
     if feature_name in element_labels:
         feature.mat = process_element(feature.mat, 0.47)
     match(feature_name):
