@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
 from qfluentwidgets import (BodyLabel, CardWidget, ComboBox, FluentIcon,

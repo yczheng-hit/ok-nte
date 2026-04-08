@@ -67,17 +67,17 @@ class AutoCombatTask(BaseCombatTask, TriggerTask):
         frame = self.frame
         is_single = count == 1
         for i in range(count):
-            big_mat, w, h = get_char_feature_by_pos(self, i, frame=frame, scale_box=1.1, single_char=is_single)
-            if big_mat is not None and big_mat.size > 0:
-                is_match, match_name, _ = manager.match_feature(big_mat, threshold=0.8)
-                feature_mat = get_char_feature_by_pos(self, i, frame=frame, single_char=is_single)[0]
+            feature_mat, w, h = get_char_feature_by_pos(self, i, frame=frame, single_char=is_single)
+            if feature_mat is not None and feature_mat.size > 0:
+                is_match, match_name, confidence = manager.match_feature(self, feature_mat, threshold=0.8)
+                name = match_name if is_match else None
                 results.append({
                     "index": i,
                     "mat": feature_mat,
                     "width": w,
                     "height": h,
-                    "match": match_name if is_match else None
+                    "match": name
                 })
-        self.log_debug(f'scan_team {[r["match"] for r in results]}')
+                self.log_debug(f"char_{i + 1}: {name}, confidence={confidence:.2f}")
         scanner_signals.scan_done.emit(results)
         self.log_info("扫描完成！")

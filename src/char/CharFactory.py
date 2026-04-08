@@ -52,12 +52,12 @@ def get_char_by_pos(task: 'BaseCombatTask', box: 'Box', index: int, old_char: Ba
     cropped = box.crop_frame(task.frame)
     # Fast path check: if we already have an old_char, specifically test its matching only
     if old_char and old_char.confidence > 0.8:
-        is_match, match_name, sim = manager.match_feature(cropped, threshold=0.8, target_char=old_char.char_name)
+        is_match, match_name, sim = manager.match_feature(task,cropped, threshold=0.8, target_char=old_char.char_name)
         if is_match and match_name == old_char.char_name:
             return _build_char_instance(task, index, match_name, sim, manager)
             
     # Perform Full DB Scan using the memory-cached match_feature
-    is_match, match_name, sim = manager.match_feature(cropped, threshold=0.8)
+    is_match, match_name, sim = manager.match_feature(task, cropped, threshold=0.8)
 
     if is_match and match_name:
         return _build_char_instance(task, index, match_name, sim, manager)

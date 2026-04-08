@@ -4,3 +4,4 @@ openvino
 opencv-python
 pyside6==6.9.1
 scikit-image
+OpenCC

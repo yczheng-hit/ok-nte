@@ -67,7 +67,7 @@ class CustomChar(BaseChar):
             Cmd("keydown", cls.keydown, PARAM_REQ_KEY, "按下按键", "keydown(a)"),
             Cmd("keyup", cls.keyup, PARAM_REQ_KEY, "松开按键", "keyup(d)"),
             Cmd("keypress", cls.keypress, PARAM_REQ_KEY, "按下并松开按键", "keypress(f1)"),
-            Cmd("if_", cls._execute_if_command, "条件命令、一个或多个目标命令", "条件执行：仅可使用标记为 if_capable=True 的命令作为条件命令", "if_(ultimate, skill), if_(ultimate, l_click(2), wait(0.1))"),
+            Cmd("if_", cls._execute_if_command, "条件命令、一个或多个目标命令", "条件执行：仅可使用标记为（可用于 if_ 条件）的命令作为条件命令", "if_(ultimate, skill), if_(ultimate, l_click(2), wait(0.1))"),
         ]
 
     def _compile_combo(self):

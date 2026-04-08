@@ -48,6 +48,7 @@ def make_bottom_left_black(frame): #可选. 某些游戏截图时遮挡UID使用
         return original_frame
 
 config = {
+    'custom_tasks': False, # enable creating and editing custom tasks
     'debug': False,  # Optional, default: False
     'use_gui': True, # 目前只支持True
     'config_folder': 'configs', #最好不要修改
@@ -59,6 +60,7 @@ config = {
     'wait_until_settle_time': 0, #调用 wait_until时候, 在第一次满足条件的时候, 会等待再次检测, 以避免某些滑动动画没到预定位置就在动画路径中被检测到
     'ocr': { #可选, 使用的OCR库
         'lib': 'onnxocr',
+        'auto_simplify': True,
         'params': {
             'use_openvino': True,
         }
@@ -115,7 +117,7 @@ config = {
     'screenshots_folder': "screenshots", #截图存放目录, 每次重新启动会清空目录
     'gui_title': 'ok-nte',  #窗口名
     'template_matching': { # 可选, 如使用OpenCV的模板匹配
-        'coco_feature_json': os.path.join('assets', 'coco_detection.json'),
+        'coco_feature_json': os.path.join('assets', 'coco_annotations.json'),
         'default_horizontal_variance': 0.002, #默认x偏移, 查找不传box的时候, 会根据coco坐标, match偏移box内的
         'default_vertical_variance': 0.002, #默认y偏移
         'default_threshold': 0.8, #默认threshold

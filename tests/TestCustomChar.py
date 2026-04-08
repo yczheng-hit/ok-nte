@@ -11,7 +11,7 @@ from src.char.custom.CustomCharManager import CustomCharManager
 from src.config import config
 from src.tasks.trigger.AutoCombatTask import AutoCombatTask
 from src.ui.CharManagerTab import CharManagerTab
-from src.ui.TeamScannerTab import SlotCard, TeamScannerTab
+from src.ui.TeamScannerTab import TeamScannerTab
 
 PREDEFINED_CHARACTER_REF = "builtin:char_zero"
 
@@ -125,7 +125,7 @@ class TestCustomChar(TaskTestCase):
 
         # 測試特徵匹配邏輯 match_feature
         # 目前特徵庫內有一張假圖，如果餵入一模一樣的黑圖，應該回報 True
-        is_match, match_char, similarity = self.manager.match_feature(fake_mat, threshold=0.99)
+        is_match, match_char, similarity = self.manager.match_feature(self.task, fake_mat, threshold=0.99)
         self.assertTrue(is_match)
         self.assertEqual(match_char, "char1")
 

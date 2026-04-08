@@ -2,10 +2,16 @@ import json
 import os
 import uuid
 from threading import Lock, RLock
+import numpy as np
+from typing import TYPE_CHECKING
 
 import cv2
-from ok import Logger, og
+from ok import Logger
 from src.char.custom.BuiltinComboRegistry import BuiltinComboRegistry
+from src.Labels import Labels
+
+if TYPE_CHECKING:
+    from src.combat.BaseCombatTask import BaseCombatTask
 
 logger = Logger.get_logger(__name__)
 
@@ -33,6 +39,7 @@ class CustomCharManager:
         os.makedirs(FEATURES_DIR, exist_ok=True)
         self.db = self._default_db()
         self._feature_cache = {}
+        self._cache_mask = None
         self._cache_scr_w = -1
         self._cache_scr_h = -1
         self._cache_fids = set()
@@ -454,9 +461,9 @@ class CustomCharManager:
             return mat, w, h
         return None, 0, 0
 
-    def match_feature(self, new_image_mat, threshold=0.8, target_char=None):
+    def match_feature(self, task:'BaseCombatTask', new_image_mat, threshold=0.8, target_char=None):
         """比对新截图与所有数据库内特征图，返回(是/否匹配, 匹配到的角色名, 相似度)"""
-        current_scr_h, current_scr_w = og.executor.frame.shape[:2]
+        current_scr_h, current_scr_w = task.height, task.width
 
         with self._data_lock:
             character_snapshot = {}
@@ -499,6 +506,8 @@ class CustomCharManager:
                         rebuilt_cache[char_name][fid] = resized_saved
             with self._data_lock:
                 self._feature_cache = rebuilt_cache
+                box = task.get_box_by_name(Labels.box_char_1)
+                self._cache_mask = create_ellipse_mask(box.width, box.height, box.width * 0.4, box.height * 0.4) if box else None
 
         with self._data_lock:
             cache_snapshot = {char_name: dict(features) for char_name, features in self._feature_cache.items()}
@@ -510,8 +519,11 @@ class CustomCharManager:
             if target_char and char_name != target_char:
                 continue
             for fid, cached_mat in cached_features.items():
-                # Compute similarity using matchTemplate (Normalized Cross Correlation)
-                res = cv2.matchTemplate(new_image_mat, cached_mat, cv2.TM_CCOEFF_NORMED)
+                # show_masked_template(cached_mat, self._cache_mask)  # Debug visualization of the masked template
+                mask = None
+                if self._cache_mask is not None:
+                    mask = self._cache_mask if cached_mat.shape[0:2] == self._cache_mask.shape[0:2] else None
+                res = cv2.matchTemplate(new_image_mat, cached_mat, cv2.TM_CCOEFF_NORMED, mask=mask)
                 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
                 if max_val > best_similarity:
                     best_similarity = max_val
@@ -559,3 +571,48 @@ class CustomCharManager:
                 out["combo_name"] = combo_ref
                 return out
             return char_info
+
+
+def create_ellipse_mask(w, h, rx, ry):
+    # 1. 创建全黑图像
+    mask = np.zeros((h, w), dtype=np.uint8)
+    
+    # 2. 强制将所有数值转换为整数，避免类型错误
+    # center 要求是 (int, int)
+    # axes 要求是 (int, int)
+    center = (int(w // 2), int(h // 2))
+    axes = (int(rx), int(ry))
+    
+    # 3. 使用规范的参数格式
+    # 必须保证是 (img, center, axes, angle, startAngle, endAngle, color, thickness)
+    cv2.ellipse(mask, center, axes, 0, 0, 360, 255, -1)
+    
+    return mask
+
+
+def show_masked_template(cached_mat, _cache_mask):
+    # 1. 获取目标尺寸 (以 cached_mat 为准)
+    h, w = cached_mat.shape[:2]
+    
+    # 2. 确保 mask 是 2 维的 (如果有可能是 3 维的，去掉通道)
+    if len(_cache_mask.shape) == 3:
+        mask = _cache_mask[:, :, 0]
+    else:
+        mask = _cache_mask.copy()
+        
+    # 3. 强制调整 mask 尺寸以匹配 cached_mat
+    if mask.shape != (h, w):
+        print(f"警告：尺寸不匹配！Mat: {h}x{w}, Mask: {mask.shape}。正在强制 resize...")
+        mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+        
+    # 4. 确保类型是 uint8
+    mask = mask.astype(np.uint8)
+    
+    # 5. 执行位运算
+    result = cv2.bitwise_and(cached_mat, cached_mat, mask=mask)
+    result = cv2.resize(result, (w * 5, h * 5), interpolation=cv2.INTER_NEAREST)
+    unmasked = cv2.resize(cached_mat, (w * 5, h * 5), interpolation=cv2.INTER_NEAREST)
+    # 显示
+    cv2.imshow("Masked Result", result)
+    cv2.imshow("unMasked Result", unmasked)
+    cv2.waitKey(0)

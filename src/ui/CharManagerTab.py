@@ -55,7 +55,8 @@ class CharManagerTab(CustomTab):
         self.tr_rename_msg = og.app.tr("角色已重命名为: {}")
         
         self.tr_name = og.app.tr('角色管理')
-        self.tr_choose_char = tr_fmt('👈 请在左侧选择一个角色以管理特征和{combo_title}', combo_title=self.tr_combo_title)
+        self.tr_choose_char = tr_fmt('请在左侧选择一个角色以管理特征和{combo_title}', combo_title=self.tr_combo_title)
+        self.tr_first_time_hint = og.app.tr('初次使用请先至 [{}] 扫描角色').format(og.app.tr("扫描队伍"))
         self.tr_delete = og.app.tr('删除')
         self.tr_unbound_text = tr_fmt('当前未绑定任何{combo_title}。\n遇到此角色将默认使用基础通用脚本(BaseChar)。', combo_title=self.tr_combo_title)
         self.tr_builtin_text = og.app.tr('此为内建 Python 脚本，不可在此修改。\n请在对应的源文件中直接修改代码。')
@@ -116,6 +117,10 @@ class CharManagerTab(CustomTab):
         self.detail_h_layout.addWidget(self.char_name_edit_btn, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
         self.detail_h_layout.addStretch(1) 
         self.detail_v_layout.addLayout(self.detail_h_layout)
+        
+        self.char_subtitle = SubtitleLabel(self.tr_first_time_hint)
+        self.char_subtitle.setTextColor(QColor("#FF0000"), QColor("#FF0000"))
+        self.detail_v_layout.addWidget(self.char_subtitle)
 
         # === 特征图区 ===
         # self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("已绑定的特征图")))
@@ -132,7 +137,6 @@ class CharManagerTab(CustomTab):
         self.feature_scroll_card = SimpleCardWidget()
         self.feature_scroll_card_layout = QVBoxLayout(self.feature_scroll_card)
         self.feature_scroll_card_layout.setContentsMargins(2, 2, 2, 2)
-        self.feature_scroll_card.setFixedHeight(20)
         self.feature_scroll_card_layout.addWidget(self.feature_scroll)
 
         self.detail_v_layout.addWidget(self.feature_scroll_card)
@@ -203,6 +207,11 @@ class CharManagerTab(CustomTab):
         self.list_widget.clearSelection()
         self.list_widget.blockSignals(False)
 
+        if self.list_widget.count() != 0:
+            self.char_subtitle.hide()
+        else:
+            self.char_subtitle.show()
+
         self._reload_combo_options()
         
         self.on_combo_changed("")
@@ -215,10 +224,11 @@ class CharManagerTab(CustomTab):
             if widget:
                 widget.setParent(None)
 
-        if select_text:
-            items = self.list_widget.findItems(select_text, Qt.MatchFlag.MatchExactly)
-            if items:
-                self.list_widget.setCurrentItem(items[0])
+        items = self.list_widget.findItems(select_text or "", Qt.MatchFlag.MatchExactly)
+        if items:
+            self.list_widget.setCurrentItem(items[0])
+        else:
+            self.feature_scroll_card.setFixedHeight(20)
 
     def on_export_data(self):
         downloads_path = Path.home() / "Downloads"
