@@ -248,7 +248,7 @@ dev = [{ name = "polib", specifier = ">=1.2.0" }]
 
 [[package]]
 name = "ok-script"
-version = "1.0.97"
+version = "1.0.99"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mouse" },
@@ -261,9 +261,9 @@ dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/ce/bcbf037f681ad0b51095f21222edaa5c936f7cc5a6e0b99b8c514c93e486/ok_script-1.0.97.tar.gz", hash = "sha256:d6aabe95c7f5fcfb501e9e20961e4284d281849019300e34ec2a72e1f01daad1", size = 399575, upload-time = "2026-04-08T09:07:19.259Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/f1/24138ed044497686d148ba5a3c15d9f331da1cc253e57cc48a84b4810daa/ok_script-1.0.99.tar.gz", hash = "sha256:d509fa47c50f7af2efe750110868fe1195c010d66a3936495c96a34099e703c5", size = 956481, upload-time = "2026-04-09T17:07:06.67Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/55/76a62462bef16d2263c6e8dcf76df5353e1c9c6ca0056d48e95326a53cdf/ok_script-1.0.97-py3-none-any.whl", hash = "sha256:5eebf51a0749425830a3170b4db904917fcee788381e2337c017236ecc01c7e3", size = 450824, upload-time = "2026-04-08T09:07:16.659Z" },
+    { url = "https://files.pythonhosted.org/packages/62/81/c89e8fe44a7dfd572a657bac59602ced13ddb0ff8e49e9c713e89a7fa04f/ok_script-1.0.99-py3-none-any.whl", hash = "sha256:cf1ef9072ea499c9bee15555269e3455834656cee52f52edb9a4fe1bb96fe0c2", size = 1031239, upload-time = "2026-04-09T17:07:04.859Z" },
 ]
 
 [[package]]

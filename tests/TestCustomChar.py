@@ -163,12 +163,12 @@ class TestCustomChar(TaskTestCase):
         
         # 測試列表刷新
         tab.refresh_list()
-        self.assertEqual(tab.list_widget.count(), 2)
+        self.assertEqual(tab.char_list_widget.count(), 2)
         
         # 模擬 UI 點擊選擇 "char_ui_1"
-        item = tab.list_widget.item(0)
+        item = tab.char_list_widget.item(0)
         if item.text() != "char_ui_1":
-            item = tab.list_widget.item(1)
+            item = tab.char_list_widget.item(1)
         tab.on_char_selected(item)
         
         # 預期：右側標題變為 char_ui_1，且 combo 等級顯示為 combo_ui
@@ -219,7 +219,6 @@ class TestCustomChar(TaskTestCase):
         builtin_label = self.manager.to_combo_label(builtin_ref)
 
         self.assertTrue(self.manager.is_builtin_combo(builtin_ref))
-        self.assertTrue(self.manager.is_builtin_combo(builtin_label))
         self.assertEqual(self.manager.to_combo_ref(builtin_label), builtin_ref)
 
         self.manager.add_character("char_builtin", builtin_label)

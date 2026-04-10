@@ -56,6 +56,7 @@ class CustomCharManager:
             "combos": {},
             "characters": {},
             "features": {}
+
         }
 
     @staticmethod
@@ -63,24 +64,23 @@ class CustomCharManager:
         return BuiltinComboRegistry._legacy_prefix()
 
     @staticmethod
-    def to_combo_ref(combo_name: str) -> str:
-        return BuiltinComboRegistry.to_ref(combo_name)
+    def to_combo_ref(combo_label: str) -> str:
+        return BuiltinComboRegistry.to_ref(combo_label)
 
     @staticmethod
-    def to_combo_label(combo_name: str) -> str:
-        return BuiltinComboRegistry.to_label(combo_name)
+    def to_combo_label(combo_ref: str) -> str:
+        return BuiltinComboRegistry.to_label(combo_ref)
 
     @staticmethod
-    def get_builtin_key(combo_name: str) -> str | None:
-        combo_ref = BuiltinComboRegistry.to_ref(combo_name)
+    def get_builtin_key(combo_ref: str) -> str | None:
         key = BuiltinComboRegistry.ref_to_key(combo_ref)
         if key and key in dict(BuiltinComboRegistry._get_builtin_entries()):
             return key
         return None
 
     @staticmethod
-    def is_builtin_combo(combo_name: str) -> bool:
-        return CustomCharManager.get_builtin_key(combo_name) is not None
+    def is_builtin_combo(combo_ref: str) -> bool:
+        return CustomCharManager.get_builtin_key(combo_ref) is not None
 
     @classmethod
     def _to_custom_combo_key(cls, combo_key: str, existing_keys: set[str]) -> str:
@@ -221,8 +221,8 @@ class CustomCharManager:
 
             normalized_combos = {}
             combo_key_remap = {}
-            for combo_name, combo_content in self.db.get("combos", {}).items():
-                combo_key = str(combo_name).strip()
+            for combo_ref, combo_content in self.db.get("combos", {}).items():
+                combo_key = str(combo_ref).strip()
                 if not combo_key:
                     modified = True
                     continue
@@ -328,27 +328,29 @@ class CustomCharManager:
     def migrate_combo_references(self):
         self.migrate_db_schema()
 
-    def add_combo(self, combo_name, content):
+    def add_combo(self, combo_ref, content):
         """添加或更新出招表"""
         with self._data_lock:
-            combo_ref = self.to_combo_ref(combo_name)
             if not combo_ref or self.is_builtin_combo(combo_ref):
                 return
             self.db["combos"][combo_ref] = content
             self.save_db()
 
-    def delete_combo(self, combo_name):
+    def delete_combo(self, combo_ref):
         """删除出招表"""
         with self._data_lock:
-            combo_ref = self.to_combo_ref(combo_name)
             if combo_ref in self.db["combos"]:
                 del self.db["combos"][combo_ref]
                 self.save_db()
 
-    def get_combo(self, combo_name):
+    def is_custom_combo_exist(self, combo_ref):
+        """判断出招表是否存在"""
+        with self._data_lock:
+            return combo_ref in self.db["combos"]
+
+    def get_combo(self, combo_ref):
         """获取出招表"""
         with self._data_lock:
-            combo_ref = self.to_combo_ref(combo_name)
             if combo_ref in self.db["combos"]:
                 return self.db["combos"].get(combo_ref, "")
             if self.is_builtin_combo(combo_ref):
@@ -370,13 +372,12 @@ class CustomCharManager:
             items.extend([(label, combo_ref) for combo_ref, label in BuiltinComboRegistry.iter_builtin_pairs()])
             return items
 
-    def add_character(self, char_name, combo_name):
+    def add_character(self, char_name, combo_ref):
         """添加或更新角色属性 (不包含特征图)"""
         with self._data_lock:
             char_name = self._normalize_char_name(char_name)
             if not char_name:
                 return
-            combo_ref = self.to_combo_ref(combo_name)
             char_id = self._find_character_id_by_name(char_name)
             if char_id is None:
                 char_id = self._generate_character_id()

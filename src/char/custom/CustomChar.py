@@ -20,7 +20,7 @@ class CustomChar(BaseChar):
     def __init__(self, task, index, char_name=None, confidence=1):
         super().__init__(task, index, char_name, confidence)
         self.manager = CustomCharManager()
-        self.combo_name = ""
+        self.combo_label = ""
         self.combo_str = ""
         self.parsed_combo = []
         self._load_combo()
@@ -29,7 +29,7 @@ class CustomChar(BaseChar):
         char_info = self.manager.get_character_info(self.char_name)
         if char_info:
             combo_ref = self.manager.to_combo_ref(char_info.get("combo_ref", ""))
-            self.combo_name = self.manager.to_combo_label(combo_ref)
+            self.combo_label = self.manager.to_combo_label(combo_ref)
             self.combo_str = self.manager.get_combo(combo_ref)
             self._compile_combo()
         else:

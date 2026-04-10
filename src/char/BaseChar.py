@@ -80,7 +80,7 @@ class BaseChar:
         self.confidence = confidence
         self.logger = Logger.get_logger(self.name)
         self.cycle_start_time = 0.0
-        self.combo_name = "default"
+        self.combo_label = "default"
         self.element = Element.DEFAULT
 
     def cycle_start(self):

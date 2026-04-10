@@ -37,7 +37,7 @@ def _build_char_instance(task, index, match_name, sim, manager: 'CustomCharManag
         cls: 'BaseChar' = char_dict[builtin_key].get('cls', BaseChar)
         instance: 'BaseChar' = cls(task, index, char_name=match_name, confidence=sim)
         instance.builtin_key = builtin_key
-        instance.combo_name = manager.to_combo_label(combo_ref)
+        instance.combo_label = manager.to_combo_label(combo_ref)
         return instance
     
     # Otherwise return default parsed CustomChar

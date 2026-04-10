@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
 
-from qfluentwidgets import (BodyLabel, CardWidget, ComboBox, FluentIcon,
+from qfluentwidgets import (BodyLabel, CardWidget, FluentIcon,
                             ImageLabel, MessageBoxBase,
                             PrimaryPushButton, SubtitleLabel)
 
@@ -20,7 +20,7 @@ class NewCharDialog(MessageBoxBase):
         self.manager = manager
         self.tr_title = og.app.tr("记录新特征")
         self.tr_name_ph = og.app.tr("输入或选择关联的角色名称")
-        self.tr_list_ph = og.app.tr("选择绑定的出招表 (可选)")
+        self.tr_list_ph = og.app.tr("输入或选择绑定的出招表 (可选)")
 
         self.viewLayout.setSpacing(10)
         self.viewLayout.addWidget(SubtitleLabel(self.tr_title, self), alignment=Qt.AlignmentFlag.AlignCenter)
@@ -64,14 +64,14 @@ class NewCharDialog(MessageBoxBase):
 
     def get_data(self):
         char_name = self.char_combo.currentText().strip()
-        combo_text = self.combo_list.currentText().strip()
-        combo_name = self.manager.to_combo_ref(combo_text)
+        combo_label = self.combo_list.currentText().strip()
+        combo_ref = self.manager.to_combo_ref(combo_label)
         idx = self.combo_list.currentIndex()
-        if idx >= 0 and combo_text == self.combo_list.itemText(idx):
+        if idx >= 0 and combo_label == self.combo_list.itemText(idx):
             data = self.combo_list.itemData(idx)
             if isinstance(data, str):
-                combo_name = data
-        return char_name, combo_name
+                combo_ref = data
+        return char_name, combo_ref
 
 
 class SlotCard(CardWidget):
@@ -129,10 +129,12 @@ class SlotCard(CardWidget):
     def on_action(self):
         dialog = NewCharDialog(self.current_mat, self.manager, self.window())
         if dialog.exec():
-            char_name, combo_name = dialog.get_data()
+            char_name, combo_ref = dialog.get_data()
             if char_name and self.current_mat is not None:
                 self.manager.add_feature_to_character(char_name, self.current_mat, width=self.current_w, height=self.current_h)
-                self.manager.add_character(char_name, combo_name)
+                self.manager.add_character(char_name, combo_ref)
+                if not self.manager.is_custom_combo_exist(combo_ref):
+                    self.manager.add_combo(combo_ref, "")
                 self.update_result(self.current_mat, self.current_w, self.current_h, char_name)
                 char_manager_signals.refresh_tab.emit()
 

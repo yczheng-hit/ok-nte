@@ -1,17 +1,19 @@
-from PySide6.QtCore import Qt, Signal, Slot, QTimer
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QGraphicsBlurEffect,
-                               QVBoxLayout, QWidget, QFileDialog, QGraphicsDropShadowEffect)
+from PySide6.QtCore import Qt, Signal, Slot, QTimer, QEvent
+from PySide6.QtWidgets import (QHBoxLayout, QGraphicsBlurEffect, QVBoxLayout,
+                               QWidget, QFileDialog, QGraphicsDropShadowEffect,
+                               QSizePolicy)
 
-from qfluentwidgets import (CardWidget, EditableComboBox, FluentIcon, QColor,
-                            ImageLabel, ListWidget, PrimaryPushButton, InfoBar, InfoBarPosition,
+from qfluentwidgets import (CardWidget, FluentIcon, QColor, SimpleCardWidget,
+                            ImageLabel, PrimaryPushButton, InfoBar, InfoBarPosition,
                             PushButton, SubtitleLabel, TextEdit, TitleLabel, TransparentToolButton,
-                            MessageBoxBase, LineEdit, PrimaryToolButton, SmoothScrollArea, SimpleCardWidget,
-                            isDarkTheme)
+                            MessageBoxBase, LineEdit, PrimaryToolButton, SmoothScrollArea,
+                            isDarkTheme, FlowLayout, SearchLineEdit)
 
 from ok import og
 from ok.gui.widget.CustomTab import CustomTab
 from src.char.custom.CustomCharManager import CustomCharManager
-from src.ui.common import cv_to_pixmap, char_manager_signals, SearchableComboBox
+from src.ui.common import (cv_to_pixmap, char_manager_signals, SearchableComboBox,
+                           SearchableListWidget, SmoothSearchBar)
 import json
 import zipfile
 import shutil
@@ -60,13 +62,21 @@ class CharManagerTab(CustomTab):
         self.tr_delete = og.app.tr('删除')
         self.tr_unbound_text = tr_fmt('当前未绑定任何{combo_title}。\n遇到此角色将默认使用基础通用脚本(BaseChar)。', combo_title=self.tr_combo_title)
         self.tr_builtin_text = og.app.tr('此为内建 Python 脚本，不可在此修改。\n请在对应的源文件中直接修改代码。')
+        self.tr_no_match_cmd = og.app.tr("没有找到匹配的指令。")
         
         self.icon = FluentIcon.PEOPLE
         self.manager = CustomCharManager()
         self._doc_cache_by_locale = {}
+        self._doc_cache = None
+        self._pending_command = ""
         self._doc_translation_pending_locales = set()
+        self._all_characters = []
         self.doc_translation_ready.connect(self._on_doc_translation_ready)
         char_manager_signals.refresh_tab.connect(self.refresh_list)
+
+        self._filter_timer = QTimer()
+        self._filter_timer.setSingleShot(True)  # 设置为单次触发
+        self._filter_timer.timeout.connect(self._run_doc_filter)
 
         # main layout
         self.main_h_layout = QHBoxLayout(self)
@@ -77,9 +87,9 @@ class CharManagerTab(CustomTab):
         self.left_v_layout = QVBoxLayout(self.left_widget)
         self.left_v_layout.setContentsMargins(10, 10, 10, 10)
         
-        self.list_widget = ListWidget(self)
-        self.list_widget.setFixedWidth(200)
-        self.list_widget.currentItemChanged.connect(self.on_char_selected)
+        self.char_list_widget = SearchableListWidget(self)
+        self.char_list_widget.setPlaceholderText(og.app.tr("搜索角色"))
+        self.char_list_widget.currentItemChanged.connect(self.on_char_selected)
         
         self.refresh_btn = PushButton(FluentIcon.SYNC, og.app.tr("刷新列表"), self)
         self.refresh_btn.clicked.connect(self.refresh_list)
@@ -98,25 +108,25 @@ class CharManagerTab(CustomTab):
         self.left_v_layout.addWidget(self.delete_char_btn)
         self.left_v_layout.addWidget(self.import_btn)
         self.left_v_layout.addWidget(self.export_btn)
-        self.left_v_layout.addWidget(self.list_widget)
+        self.left_v_layout.addWidget(self.char_list_widget)
 
         # Right side: Detail View
         self.detail_widget = QWidget()
         self.detail_v_layout = QVBoxLayout(self.detail_widget)
         self.detail_v_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.detail_h_layout = QHBoxLayout()
+        self.title_h_layout = QHBoxLayout()
 
         self.char_title = TitleLabel(self.tr_choose_char)
-        self.detail_h_layout.addWidget(self.char_title)
+        self.title_h_layout.addWidget(self.char_title)
 
         self.char_name_edit_btn = TransparentToolButton(FluentIcon.EDIT)
         self.char_name_edit_btn.setToolTip(self.tr_edit_char_name)
         self.char_name_edit_btn.clicked.connect(self.on_edit_char_name)
         self.char_name_edit_btn.hide()
-        self.detail_h_layout.addWidget(self.char_name_edit_btn, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
-        self.detail_h_layout.addStretch(1) 
-        self.detail_v_layout.addLayout(self.detail_h_layout)
+        self.title_h_layout.addWidget(self.char_name_edit_btn, alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom)
+        self.title_h_layout.addStretch(1) 
+        self.detail_v_layout.addLayout(self.title_h_layout)
         
         self.char_subtitle = SubtitleLabel(self.tr_first_time_hint)
         self.char_subtitle.setTextColor(QColor("#FF0000"), QColor("#FF0000"))
@@ -125,28 +135,36 @@ class CharManagerTab(CustomTab):
         # === 特征图区 ===
         # self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("已绑定的特征图")))
 
+        # 1. 准备核心内容
+        self.feature_grid_widget = QWidget()
+        self.feature_grid_widget.installEventFilter(self)
+        self.feature_grid = FlowLayout(self.feature_grid_widget)
+
+        # 2. 准备滚动卷轴，并把内容包进去
         self.feature_scroll = SmoothScrollArea()
         self.feature_scroll.setWidgetResizable(True)
-        
-        self.feature_grid_widget = QWidget()
-        self.feature_grid = QGridLayout(self.feature_grid_widget)
-        
         self.feature_scroll.setWidget(self.feature_grid_widget)
-        self.feature_scroll.enableTransparentBackground()
-        
+
+        # 3. 准备最外层，并把卷轴包进去
         self.feature_scroll_card = SimpleCardWidget()
+        self.feature_scroll_card.setMinimumHeight(20)
+        self.feature_scroll_card.setMaximumHeight(20)
+        self.feature_scroll_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.feature_scroll_card_layout = QVBoxLayout(self.feature_scroll_card)
         self.feature_scroll_card_layout.setContentsMargins(2, 2, 2, 2)
         self.feature_scroll_card_layout.addWidget(self.feature_scroll)
 
-        self.detail_v_layout.addWidget(self.feature_scroll_card)
+        # 4. set style
+        self.feature_scroll.enableTransparentBackground()
+        
+        self.detail_v_layout.addWidget(self.feature_scroll_card, stretch=3)
 
         # === 出招表区 ===
         self.detail_v_layout.addWidget(SubtitleLabel(self.tr_combo_title))
 
         self.combo_h_layout = QHBoxLayout()
         self.combo_select = SearchableComboBox()
-        self.combo_select.setPlaceholderText(tr_fmt("选择或输入{combo_title}名 (按下回车即可创建)", combo_title=self.tr_combo_title))
+        self.combo_select.setPlaceholderText(tr_fmt("选择或输入{combo_title}名", combo_title=self.tr_combo_title))
         self.combo_select.currentTextChanged.connect(self.on_combo_changed)
         self.combo_h_layout.addWidget(self.combo_select, 1)
 
@@ -162,8 +180,9 @@ class CharManagerTab(CustomTab):
 
         self.combo_text = TextEdit()
         self.combo_text.setPlaceholderText("skill,wait(0.5),l_click(3),ultimate")
+        self.combo_text.setMinimumHeight(20)
         self.combo_text.setMaximumHeight(100)
-        self.detail_v_layout.addWidget(self.combo_text)
+        self.detail_v_layout.addWidget(self.combo_text, 1)
 
         self.combo_actions_layout = QHBoxLayout()
         self.combo_actions_layout.addStretch(1)
@@ -178,12 +197,20 @@ class CharManagerTab(CustomTab):
 
         self.detail_v_layout.addLayout(self.combo_actions_layout)
 
-        self.detail_v_layout.addWidget(SubtitleLabel(og.app.tr("可用指令")))
-        
+        self.doc_h_layout = QHBoxLayout()
+        self.doc_search_line_edit = SmoothSearchBar()
+        self.doc_search_line_edit.setMaximumWidth(200)
+        self.doc_search_line_edit.textChanged.connect(self._filter_doc_commands)
+        self.doc_h_layout.addWidget(SubtitleLabel(og.app.tr("可用指令")))
+        self.doc_h_layout.addWidget(self.doc_search_line_edit)
+        self.doc_h_layout.addStretch(1)
+
+        self.detail_v_layout.addLayout(self.doc_h_layout)
+
         self.doc_content = TextEdit()
         self.doc_content.setReadOnly(True)
         self.doc_content.setPlainText(self.generate_doc())
-        self.detail_v_layout.addWidget(self.doc_content)
+        self.detail_v_layout.addWidget(self.doc_content, 2)
 
         self.main_h_layout.addWidget(self.left_widget, 1)
         self.main_h_layout.addWidget(self.detail_widget, 4)
@@ -191,23 +218,32 @@ class CharManagerTab(CustomTab):
         self.current_char = None
         self.refresh_list()
 
+    def eventFilter(self, watched, event: QEvent):
+        if hasattr(self, 'feature_grid_widget') and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self._update_feature_widget_height)
+            
+        return super().eventFilter(watched, event)
+
     @property
     def name(self):
         return self.tr_name
 
     def refresh_list(self):
-        select = self.list_widget.currentItem()
+        select = self.char_list_widget.currentItem()
         select_text = select.text() if select else None
         self.current_char = None
-        self.list_widget.blockSignals(True)
-        self.list_widget.clear()
-        chars = self.manager.get_all_characters()
-        for c in chars.keys():
-            self.list_widget.addItem(c)
-        self.list_widget.clearSelection()
-        self.list_widget.blockSignals(False)
+        self._all_characters = list(self.manager.get_all_characters().keys())
+        self.char_list_widget.setUpdatesEnabled(False)
+        self.char_list_widget.clear()
+        for name in self._all_characters:
+            self.char_list_widget.addItem(name)
+        self.char_list_widget.setUpdatesEnabled(True)
 
-        if self.list_widget.count() != 0:
+        #Test Code: Add dummy items
+        # for i in range(20):
+        #     self.char_list_widget.addItem(f"测试角色 {i}")
+
+        if self.char_list_widget.count() != 0:
             self.char_subtitle.hide()
         else:
             self.char_subtitle.show()
@@ -220,15 +256,17 @@ class CharManagerTab(CustomTab):
         self.char_title.setText(self.tr_choose_char)
         self.char_name_edit_btn.hide()
         for i in reversed(range(self.feature_grid.count())):
-            widget = self.feature_grid.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+            layout_item = self.feature_grid.takeAt(i) # 1. 从布局中取回 QLayoutItem
+            if layout_item:
+                layout_item.deleteLater()
 
-        items = self.list_widget.findItems(select_text or "", Qt.MatchFlag.MatchExactly)
+        items = self.char_list_widget.findItems(select_text or "", Qt.MatchFlag.MatchExactly)
         if items:
-            self.list_widget.setCurrentItem(items[0])
+            self.char_list_widget.setCurrentItem(items[0])
         else:
-            self.feature_scroll_card.setFixedHeight(20)
+            self.char_list_widget.setCurrentItem(None)
+
+        QTimer.singleShot(0, self._update_feature_widget_height)
 
     def on_export_data(self):
         downloads_path = Path.home() / "Downloads"
@@ -394,57 +432,42 @@ class CharManagerTab(CustomTab):
         self.delete_char_btn.setEnabled(True)
         self.char_title.setText(self.current_char)
         self.char_name_edit_btn.show()
-        combo_ref = self.manager.to_combo_ref(char_info.get("combo_ref", ""))
-        combo_name = self.manager.to_combo_label(combo_ref)
+        combo_ref = char_info.get("combo_ref", "")
+        combo_label = self.manager.to_combo_label(combo_ref)
         self._set_combo_selection_by_ref(combo_ref)
         
         # Manually trigger the text change logic to ensure built-in warnings render
-        self.on_combo_changed(combo_name)
+        self.on_combo_changed(combo_label)
 
         # update feature grid
-        for i in reversed(range(self.feature_grid.count())):
-            widget = self.feature_grid.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+        while self.feature_grid.count() > 0:
+            item: FeatureCard = self.feature_grid.takeAt(0)
+            if item:
+                item.deleteLater()
 
-        row, col = 0, 0
         feature_ids = char_info.get("feature_ids", [])
         for fid in feature_ids:
             img_mat, w, h = self.manager.load_feature_image(fid)
             if img_mat is not None:
                 card = FeatureCard(fid, img_mat, self.on_delete_feature)
-                self.feature_grid.addWidget(card, row, col, Qt.AlignmentFlag.AlignTop)
-                col += 1
-                if col > 5:
-                    col = 0
-                    row += 1
+                self.feature_grid.addWidget(card)
 
-        #Test Code
-        # for i in range(10):
+        #Test Code: Add dummy items
+        # for i in range(20):
         #     test_fid = f"test_feature_{i}"
         #     if img_mat is not None:
         #         card = FeatureCard(test_fid, img_mat, lambda fid: None)
-        #         self.feature_grid.addWidget(card, row, col, Qt.AlignmentFlag.AlignTop)
-        #         col += 1
-        #         if col > 5:
-        #             col = 0
-        #             row += 1
+        #         self.feature_grid.addWidget(card)
 
-        QTimer.singleShot(0, self._adjust_feature_scroll_height)
-
-    def _adjust_feature_scroll_height(self):
-        if not hasattr(self, 'feature_grid_widget') or not self.feature_grid_widget:
-            return
-        content_height = self.feature_grid_widget.sizeHint().height() + 8
-        self.feature_scroll_card.setFixedHeight(min(220, max(0, content_height)))
+        QTimer.singleShot(0, self._update_feature_widget_height)
 
     def on_delete_feature(self, fid):
         if self.current_char:
             self.manager.remove_feature_from_character(self.current_char, fid)
             self._render_right_panel()
 
-    def on_combo_changed(self, text):
-        if not text:
+    def on_combo_changed(self, combo_label, combo_ref=None):
+        if combo_label == "":
             self.combo_text.setText(self.tr_unbound_text)
             self.combo_text.setReadOnly(True)
             self.combo_text.setEnabled(False)
@@ -452,11 +475,14 @@ class CharManagerTab(CustomTab):
             self.combo_unbind_btn.setEnabled(False)
             self.combo_delete_btn.setEnabled(False)
             self.combo_test_btn.setEnabled(False)
+            self.combo_select.setText(combo_label)
             self.combo_select.setReadOnly(False)
             self.combo_select.setCurrentIndex(-1)
             return
 
-        combo_ref = self._resolve_combo_ref(text)
+        if combo_ref is None:
+            combo_ref = self._resolve_combo_ref(combo_label)
+
         is_builtin = self.manager.is_builtin_combo(combo_ref)
         if is_builtin:
             self.combo_text.setText(self.tr_builtin_text)
@@ -630,9 +656,9 @@ class CharManagerTab(CustomTab):
             return
 
         self.refresh_list()
-        items = self.list_widget.findItems(new_name, Qt.MatchFlag.MatchExactly)
+        items = self.char_list_widget.findItems(new_name, Qt.MatchFlag.MatchExactly)
         if items:
-            self.list_widget.setCurrentItem(items[0])
+            self.char_list_widget.setCurrentItem(items[0])
 
         InfoBar.success(
             title=self.tr_save_success,
@@ -664,8 +690,8 @@ class CharManagerTab(CustomTab):
         )
 
     def on_delete_combo(self):
-        combo_name = self.combo_select.currentText().strip()
-        combo_ref = self._resolve_combo_ref(combo_name)
+        combo_label = self.combo_select.currentText().strip()
+        combo_ref = self._resolve_combo_ref(combo_label)
         if not combo_ref or self.manager.is_builtin_combo(combo_ref):
             return
             
@@ -718,16 +744,17 @@ class CharManagerTab(CustomTab):
                 protected_literals[name_token] = cmd_name
                 protected_literals[example_token] = cmd_example
 
-                text += f"▶ 【{cmd_name}】\n"
+                text += f"▶ 【 {cmd_name} 】\n"
                 text += f"    • 参数: {cmd.params or empty_text}\n"
                 text += f"    • 说明: {cmd_doc}\n"
                 text += f"    • 示例: {cmd_example}\n\n"
 
-                translatable_text += f"▶ 【{name_token}】\n"
+                translatable_text += f"▶ 【 {name_token} 】\n"
                 translatable_text += f"    • 参数: {cmd.params or empty_text}\n"
                 translatable_text += f"    • 说明: {cmd_doc}\n"
                 translatable_text += f"    • 示例: {example_token}\n\n"
 
+            self._doc_cache = text
             locale_name = self._locale_name()
             if not locale_name or locale_name == "zh_CN":
                 return text
@@ -738,9 +765,36 @@ class CharManagerTab(CustomTab):
             if locale_name not in self._doc_translation_pending_locales:
                 self._doc_translation_pending_locales.add(locale_name)
                 self._start_doc_translation(text, translatable_text, locale_name, protected_literals)
-            return text + "\n\n[Translating with Google...]"
+            return "[Translating with Google...]\n\n" + text
         except Exception as e:
             return f"生成文档失败: {e}"
+        
+    def _filter_doc_commands(self, command=""):
+        self._pending_command = command
+        self._filter_timer.start(300)
+
+    def _run_doc_filter(self):
+        command = self._pending_command
+        content = self._doc_cache_by_locale.get(self._locale_name(), self._doc_cache)
+        if not isinstance(content, str) or not hasattr(self, "doc_content"):
+            return
+
+        filter_text = command.strip().lower()
+        if not filter_text:
+            self.doc_content.setPlainText(content)
+            return
+
+        filtered_lines = []
+        include_block = False
+        
+        for line in content.splitlines():
+            if line.startswith("▶"):
+                include_block = filter_text in line
+                
+            if include_block:
+                filtered_lines.append(line)
+
+        self.doc_content.setPlainText("\n".join(filtered_lines) or self.tr_no_match_cmd)
 
     def _start_doc_translation(
         self,
@@ -769,7 +823,7 @@ class CharManagerTab(CustomTab):
             translated_text = f"[Translated by Google]\n\n{translated_text}"
         except Exception as translate_error:
             self.logger.warning(f"Google translate failed for locale '{locale_name}': {translate_error}")
-            translated_text = source_text + "\n\n[Google Translate unavailable, showing zh_CN source text]"
+            translated_text = "[Google Translate unavailable, showing zh_CN source text]\n\n" + source_text
         self.doc_translation_ready.emit(locale_name, translated_text)
 
     @Slot(str, str)
@@ -825,6 +879,16 @@ class CharManagerTab(CustomTab):
         for token, value in literals.items():
             restored = restored.replace(token, value)
         return restored
+    
+    def _update_feature_widget_height(self):
+        layout = self.feature_grid_widget.layout()
+        if layout.count() > 0:
+            last_item = layout.itemAt(layout.count() - 1)
+            h = last_item.geometry().bottom() + layout.contentsMargins().bottom()
+        else:
+            h = 20
+        final_h = max(20, min(h + 5, 225))
+        self.feature_scroll_card.setMaximumHeight(final_h)
 
 class FeatureCard(CardWidget):
     def __init__(self, fid, img_mat, delete_callback, parent=None):

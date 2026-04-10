@@ -511,7 +511,7 @@ class BaseCombatTask(CombatCheck):
                     char.is_current_char = False
         self.combat_start = time.time()
         if self.team_size > 0:
-            self.info_set('Chars', [f"{c.char_name}: {c.combo_name}" for c in self.chars if c is not None])
+            self.info_set('Chars', [f"{c.char_name}: {c.combo_label}" for c in self.chars if c is not None])
             for c in self.chars:
                 if c:
                     self.log_info(f'loaded chars success {c} {c.confidence} {c.element}')
