@@ -7,6 +7,9 @@ from PySide6.QtWidgets import QCompleter, QVBoxLayout, QWidget
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QWidget
 from qfluentwidgets import EditableComboBox, ListWidget, SearchLineEdit
 from qfluentwidgets import FluentIcon, IconWidget, SearchLineEdit
+from ok import og
+
+COMBO = og.app.tr("出招表")
 
 class CharManagerSignals(QObject):
     refresh_tab = Signal()

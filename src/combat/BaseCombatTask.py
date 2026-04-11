@@ -17,7 +17,8 @@ from src.Labels import Labels
 from src.combat.CombatCheck import CombatCheck
 from src.char.BaseChar import Priority, Element
 from src.char.Healer import Healer
-from src.char.CharFactory import get_char_by_pos
+from src.char.CharFactory import get_char_by_name, get_char_by_pos
+from src.char.custom.CustomCharManager import CustomCharManager
 from src.tasks.BaseNTETask import binarize_bgr_by_adaptive_center, blackout_corners_by_circle, display_image
 
 from typing import TYPE_CHECKING, List
@@ -475,6 +476,26 @@ class BaseCombatTask(CombatCheck):
             if isinstance(char, char_cls):
                 return char
 
+    def _load_char_from_slot(self, index: int, count: int, fixed_slots) -> 'BaseChar':
+        box = self.get_box_by_name(f'box_char_{index + 1}')
+        if count == 1:
+            offset = int(self.width * -9 / 2560)
+            box = box.copy(x_offset=offset)
+
+        fixed_slot = safe_get(fixed_slots, index)
+        fixed_char_name = ""
+        fixed_combo_ref = ""
+        if isinstance(fixed_slot, dict):
+            fixed_char_name = str(fixed_slot.get("char_name", "") or "").strip()
+            fixed_combo_ref = str(fixed_slot.get("combo_ref", "") or "").strip()
+
+        if fixed_char_name:
+            self.log_debug(f'load_chars use fixed slot {index + 1}: {fixed_char_name} {fixed_combo_ref}')
+            return get_char_by_name(self, index, fixed_char_name, confidence=1, combo_ref=fixed_combo_ref)
+
+        box_scaled = box.scale(1.1, 1.1)
+        return get_char_by_pos(self, box_scaled, index, safe_get(self.chars, index))
+
     def load_chars(self) -> bool:
         """加载队伍中的角色信息。"""
         self.load_hotkey()
@@ -487,14 +508,11 @@ class BaseCombatTask(CombatCheck):
             count = 4
 
         elements = self.load_chars_element(count)
+        fixed_team = CustomCharManager().get_fixed_team()
+        fixed_slots = fixed_team.get("slots", []) if fixed_team.get("enabled", False) else []
         new_chars = []
         for i in range(count):
-            box = self.get_box_by_name(f'box_char_{i+1}')
-            if count == 1:
-                offset = int(self.width * -9 / 2560)
-                box = box.copy(x_offset=offset)
-            box_scaled = box.scale(1.1, 1.1)
-            char = get_char_by_pos(self, box_scaled, i, safe_get(self.chars, i))
+            char = self._load_char_from_slot(i, count, fixed_slots)
             char.element = elements[i]
             new_chars.append(char)
         self.chars = new_chars

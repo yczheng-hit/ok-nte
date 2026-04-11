@@ -50,12 +50,45 @@ class CustomCharManager:
         self.initialized = True
 
     @staticmethod
+    def _default_fixed_team():
+        return {
+            "enabled": False,
+            "slots": [{"char_name": "", "combo_ref": ""} for _ in range(4)]
+        }
+
+    @classmethod
+    def _normalize_fixed_team_slot(cls, slot) -> dict:
+        slot = slot if isinstance(slot, dict) else {}
+        char_name = cls._normalize_char_name(slot.get("char_name", ""))
+        combo_ref = cls.to_combo_ref(str(slot.get("combo_ref", "") or "").strip())
+        if not char_name:
+            combo_ref = ""
+        return {
+            "char_name": char_name,
+            "combo_ref": combo_ref,
+        }
+
+    @classmethod
+    def _normalize_fixed_team_config(cls, config) -> dict:
+        normalized = cls._default_fixed_team()
+        if not isinstance(config, dict):
+            return normalized
+
+        normalized["enabled"] = bool(config.get("enabled", False))
+        raw_slots = config.get("slots", [])
+        if isinstance(raw_slots, list):
+            for i in range(min(4, len(raw_slots))):
+                normalized["slots"][i] = cls._normalize_fixed_team_slot(raw_slots[i])
+        return normalized
+
+    @staticmethod
     def _default_db():
         return {
             "schema_version": DB_SCHEMA_VERSION,
             "combos": {},
             "characters": {},
-            "features": {}
+            "features": {},
+            "fixed_team": CustomCharManager._default_fixed_team()
 
         }
 
@@ -131,6 +164,7 @@ class CustomCharManager:
                         loaded["combos"] = data.get("combos", loaded["combos"])
                         loaded["characters"] = data.get("characters", loaded["characters"])
                         loaded["features"] = data.get("features", loaded["features"])
+                        loaded["fixed_team"] = data.get("fixed_team", loaded["fixed_team"])
             except Exception as e:
                 logger.error(f"Failed to load custom char DB: {e}")
         self.db = loaded
@@ -145,6 +179,11 @@ class CustomCharManager:
 
             if not isinstance(self.db.get("features"), dict):
                 self.db["features"] = {}
+                modified = True
+
+            fixed_team = self._normalize_fixed_team_config(self.db.get("fixed_team"))
+            if fixed_team != self.db.get("fixed_team"):
+                self.db["fixed_team"] = fixed_team
                 modified = True
 
             for char_id, char_data in self.db["characters"].items():
@@ -331,6 +370,7 @@ class CustomCharManager:
     def add_combo(self, combo_ref, content):
         """添加或更新出招表"""
         with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_ref)
             if not combo_ref or self.is_builtin_combo(combo_ref):
                 return
             self.db["combos"][combo_ref] = content
@@ -339,8 +379,20 @@ class CustomCharManager:
     def delete_combo(self, combo_ref):
         """删除出招表"""
         with self._data_lock:
+            combo_ref = self.to_combo_ref(combo_ref)
+            deleted = False
             if combo_ref in self.db["combos"]:
                 del self.db["combos"][combo_ref]
+                deleted = True
+            fixed_team = self._normalize_fixed_team_config(self.db.get("fixed_team"))
+            fixed_team_changed = False
+            for slot in fixed_team["slots"]:
+                if slot["combo_ref"] == combo_ref:
+                    slot["combo_ref"] = ""
+                    fixed_team_changed = True
+            if fixed_team_changed:
+                self.db["fixed_team"] = fixed_team
+            if deleted or fixed_team_changed:
                 self.save_db()
 
     def is_custom_combo_exist(self, combo_ref):
@@ -376,6 +428,7 @@ class CustomCharManager:
         """添加或更新角色属性 (不包含特征图)"""
         with self._data_lock:
             char_name = self._normalize_char_name(char_name)
+            combo_ref = self.to_combo_ref(combo_ref)
             if not char_name:
                 return
             char_id = self._find_character_id_by_name(char_name)
@@ -395,6 +448,7 @@ class CustomCharManager:
     def delete_character(self, char_name):
         """删除角色及其所有特征图，不影响出招表"""
         with self._data_lock:
+            char_name = self._normalize_char_name(char_name)
             char_id = self._find_character_id_by_name(char_name)
             if char_id is None:
                 return
@@ -402,6 +456,15 @@ class CustomCharManager:
             for fid in feature_ids:
                 self.delete_feature_image(fid)
             del self.db["characters"][char_id]
+            fixed_team = self._normalize_fixed_team_config(self.db.get("fixed_team"))
+            fixed_team_changed = False
+            for slot in fixed_team["slots"]:
+                if slot["char_name"] == char_name:
+                    slot["char_name"] = ""
+                    slot["combo_ref"] = ""
+                    fixed_team_changed = True
+            if fixed_team_changed:
+                self.db["fixed_team"] = fixed_team
             self._invalidate_feature_cache()
             self.save_db()
 
@@ -421,6 +484,14 @@ class CustomCharManager:
                 return False
 
             self.db["characters"][old_char_id]["name"] = new_name
+            fixed_team = self._normalize_fixed_team_config(self.db.get("fixed_team"))
+            fixed_team_changed = False
+            for slot in fixed_team["slots"]:
+                if slot["char_name"] == old_name:
+                    slot["char_name"] = new_name
+                    fixed_team_changed = True
+            if fixed_team_changed:
+                self.db["fixed_team"] = fixed_team
             self._invalidate_feature_cache()
             self.save_db()
             return True
@@ -604,6 +675,27 @@ class CustomCharManager:
                 out["combo_ref"] = combo_ref
                 return out
             return char_info
+
+    def get_fixed_team(self):
+        with self._data_lock:
+            fixed_team = self._normalize_fixed_team_config(self.db.get("fixed_team"))
+            return {
+                "enabled": fixed_team["enabled"],
+                "slots": [dict(slot) for slot in fixed_team["slots"]]
+            }
+
+    def set_fixed_team(self, enabled: bool, slots):
+        with self._data_lock:
+            self.db["fixed_team"] = self._normalize_fixed_team_config({
+                "enabled": enabled,
+                "slots": slots,
+            })
+            self.save_db()
+
+    def clear_fixed_team(self):
+        with self._data_lock:
+            self.db["fixed_team"] = self._default_fixed_team()
+            self.save_db()
 
 
 def create_ellipse_mask(w, h, rx, ry):

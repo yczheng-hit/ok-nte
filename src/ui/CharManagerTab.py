@@ -13,7 +13,7 @@ from ok import og
 from ok.gui.widget.CustomTab import CustomTab
 from src.char.custom.CustomCharManager import CustomCharManager
 from src.ui.common import (cv_to_pixmap, char_manager_signals, SearchableComboBox,
-                           SearchableListWidget, SmoothSearchBar)
+                           SearchableListWidget, SmoothSearchBar, COMBO)
 import json
 import zipfile
 import shutil
@@ -39,28 +39,28 @@ class CharManagerTab(CustomTab):
 
     def __init__(self):
         super().__init__()
-        self.tr_combo_title = og.app.tr('出招表')
+        self.tr_combo_title = COMBO
         self.tr_save_success = og.app.tr('保存成功')
-        self.tr_combo_msg = tr_fmt('{combo_title}: {} 绑定成功', combo_title=self.tr_combo_title)
+        self.tr_combo_msg = tr_fmt('{combo}: {} 绑定成功', combo=COMBO)
         self.tr_del_success = og.app.tr('删除成功')
         self.tr_del_char_msg = og.app.tr('已成功删除角色: {} 以及关联的特征图')
         self.tr_unbind_success = og.app.tr('解除绑定')
-        self.tr_unbind_msg = tr_fmt('已解除 {} 的{combo_title}绑定', combo_title=self.tr_combo_title)
+        self.tr_unbind_msg = tr_fmt('已解除 {} 的{combo}绑定', combo=COMBO)
         self.tr_import_data = og.app.tr("导入数据")
         self.tr_import_failed = og.app.tr("导入失败")
         self.tr_import_success = og.app.tr("导入成功")
         self.tr_import_msg = og.app.tr("已导入 {} 个文件")
-        self.tr_combo_invalid_title = tr_fmt("{combo_title}语法错误", combo_title=self.tr_combo_title)
+        self.tr_combo_invalid_title = tr_fmt("{combo}语法错误", combo=COMBO)
         self.tr_edit_char_name = og.app.tr("编辑名称")
         self.tr_rename_failed_title = og.app.tr("重命名失败")
         self.tr_rename_failed = og.app.tr("角色名称无效或已存在")
         self.tr_rename_msg = og.app.tr("角色已重命名为: {}")
         
         self.tr_name = og.app.tr('角色管理')
-        self.tr_choose_char = tr_fmt('请在左侧选择一个角色以管理特征和{combo_title}', combo_title=self.tr_combo_title)
-        self.tr_first_time_hint = og.app.tr('初次使用请先至 [{}] 扫描角色').format(og.app.tr("扫描队伍"))
+        self.tr_choose_char = tr_fmt('请在左侧选择一个角色以管理特征和{combo}', combo=COMBO)
+        self.tr_first_time_hint = og.app.tr('初次使用请先至 [{}] 进行设置').format(og.app.tr("扫描队伍"))
         self.tr_delete = og.app.tr('删除')
-        self.tr_unbound_text = tr_fmt('当前未绑定任何{combo_title}。\n遇到此角色将默认使用基础通用脚本(BaseChar)。', combo_title=self.tr_combo_title)
+        self.tr_unbound_text = tr_fmt('当前未绑定任何{combo}。\n遇到此角色将默认使用基础通用脚本(BaseChar)。', combo=COMBO)
         self.tr_builtin_text = og.app.tr('此为内建 Python 脚本，不可在此修改。\n请在对应的源文件中直接修改代码。')
         self.tr_no_match_cmd = og.app.tr("没有找到匹配的指令。")
         
@@ -160,11 +160,11 @@ class CharManagerTab(CustomTab):
         self.detail_v_layout.addWidget(self.feature_scroll_card, stretch=3)
 
         # === 出招表区 ===
-        self.detail_v_layout.addWidget(SubtitleLabel(self.tr_combo_title))
+        self.detail_v_layout.addWidget(SubtitleLabel(COMBO))
 
         self.combo_h_layout = QHBoxLayout()
         self.combo_select = SearchableComboBox()
-        self.combo_select.setPlaceholderText(tr_fmt("选择或输入{combo_title}名", combo_title=self.tr_combo_title))
+        self.combo_select.setPlaceholderText(tr_fmt("选择或输入{combo}名", combo=COMBO))
         self.combo_select.currentTextChanged.connect(self.on_combo_changed)
         self.combo_h_layout.addWidget(self.combo_select, 1)
 
@@ -322,6 +322,7 @@ class CharManagerTab(CustomTab):
         self.manager.migrate_db_schema()
         self.manager.validate_db()
         self.refresh_list()
+        char_manager_signals.refresh_tab.emit()
 
         InfoBar.success(
             title=self.tr_import_success,
@@ -588,6 +589,7 @@ class CharManagerTab(CustomTab):
                 duration=2000,
                 parent=self.window()
             )
+            char_manager_signals.refresh_tab.emit()
 
     def on_delete_char(self):
         if not self.current_char:
@@ -610,6 +612,7 @@ class CharManagerTab(CustomTab):
             duration=2000,
             parent=self.window()
         )
+        char_manager_signals.refresh_tab.emit()
 
     def _show_edit_dialog(self, old_name):
         w = MessageBoxBase(self)
@@ -669,6 +672,7 @@ class CharManagerTab(CustomTab):
             duration=2000,
             parent=self.window()
         )
+        char_manager_signals.refresh_tab.emit()
 
     def on_unbind_combo(self):
         if not self.current_char:
@@ -688,6 +692,7 @@ class CharManagerTab(CustomTab):
             duration=2000,
             parent=self.window()
         )
+        char_manager_signals.refresh_tab.emit()
 
     def on_delete_combo(self):
         combo_label = self.combo_select.currentText().strip()
@@ -720,6 +725,7 @@ class CharManagerTab(CustomTab):
             duration=2000,
             parent=self.window()
         )
+        char_manager_signals.refresh_tab.emit()
 
     def generate_doc(self):
         try:

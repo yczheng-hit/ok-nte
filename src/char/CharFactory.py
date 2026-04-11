@@ -23,11 +23,14 @@ char_dict: dict[str, dict[str, Any]] = {
 char_names = char_dict.keys()
 
 
-def _build_char_instance(task, index, match_name, sim, manager: 'CustomCharManager'):
+def _build_char_instance(task, index, match_name, sim, manager: 'CustomCharManager', combo_ref_override: str | None = None):
     from src.char.custom.CustomChar import CustomChar
 
     char_info = manager.get_character_info(match_name)
-    combo_ref = manager.to_combo_ref(char_info.get("combo_ref", "")) if char_info else ""
+    if combo_ref_override is None:
+        combo_ref = manager.to_combo_ref(char_info.get("combo_ref", "")) if char_info else ""
+    else:
+        combo_ref = manager.to_combo_ref(combo_ref_override)
     
     if not combo_ref:
         return BaseChar(task, index, char_name=match_name, confidence=sim)
@@ -42,6 +45,15 @@ def _build_char_instance(task, index, match_name, sim, manager: 'CustomCharManag
     
     # Otherwise return default parsed CustomChar
     return CustomChar(task, index, char_name=match_name, confidence=sim)
+
+
+def get_char_by_name(task: 'BaseCombatTask', index: int, char_name: str, confidence=1, combo_ref: str | None = None):
+    from src.char.custom.CustomCharManager import CustomCharManager
+
+    manager = CustomCharManager()
+    if not char_name:
+        return BaseChar(task, index, char_name="unknown", confidence=confidence)
+    return _build_char_instance(task, index, char_name, confidence, manager, combo_ref_override=combo_ref)
 
 
 def get_char_by_pos(task: 'BaseCombatTask', box: 'Box', index: int, old_char: BaseChar | None):
