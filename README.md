@@ -57,9 +57,9 @@ All issues and consequences arising from the use of this software are not relate
 
 此方法适合绝大多数用户，简单快捷，并支持自动更新。
 
-1.  前往 [**Releases**](https://github.com/BnanZ0/ok-nte/releases) 页面。
-2.  下载最新的 `ok-nte-win32-China-setup.exe` 文件。
-3.  双击运行安装程序，按提示完成安装即可。
+*   **[GitHub](https://github.com/BnanZ0/ok-nte/releases)**: 官方发布页，全球访问速度快。
+*   **[Mirror酱](https://mirrorchyan.com/zh/projects?rid=ok-nte&channel=stable)**: 国内镜像，下载可能需要购买其平台的 CD-KEY。
+*   **[夸克网盘](https://pan.quark.cn/s/a1052cec4d13)**: 国内网盘，免费，但需要注册并使用其客户端下载。
 
 ### 方式二：从源码运行 (适合开发者)
 
