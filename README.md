@@ -152,7 +152,7 @@ All issues and consequences arising from the use of this software are not relate
 ### 贡献者
 
 <a href="https://github.com/BnanZ0/ok-nte/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=BnanZ0/ok-nte" width="40" />
+  <img src="https://contrib.rocks/image?repo=BnanZ0/ok-nte" />
 </a>
 
 ### 赞助商 (Sponsors)

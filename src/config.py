@@ -13,6 +13,7 @@ key_config_option = ConfigOption(
     {  # 全局配置示例
         "Skill Key": "e",
         "Ultimate Key": "q",
+        "Arc Key": "r",
     },
     description="In Game Hotkey for Skills",
 )

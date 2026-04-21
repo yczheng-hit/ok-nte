@@ -324,17 +324,33 @@ class BaseChar:
         )
         return clicked, duration, animation_start > 0
 
-    def send_skill_key(self, post_sleep=0, interval=-1, down_time=0.01):
+    def click_arc(self):
+        self.send_arc_key()
+        return True
+
+    def send_skill_key(self, after_sleep=0, interval=-1, down_time=0.01):
         """发送技能按键。
 
         Args:
-            post_sleep (float, optional): 发送后的休眠时间。默认为 0。
+            after_sleep (float, optional): 发送后的休眠时间。默认为 0。
             interval (float, optional): 按键按下和释放的间隔。默认为 -1 (使用默认值)。
             down_time (float, optional): 按键按下的持续时间。默认为 0.01。
         """
         self._skill_available = False
         self.send_key(
-            self.get_skill_key(), interval=interval, down_time=down_time, after_sleep=post_sleep
+            self.get_skill_key(), interval=interval, down_time=down_time, after_sleep=after_sleep
+        )
+
+    def send_arc_key(self, after_sleep=0, interval=-1, down_time=0.01):
+        """发送弧盘技能的按键。
+
+        Args:
+            after_sleep (float, optional): 发送后的休眠时间。默认为 0。
+            interval (float, optional): 按键按下和释放的间隔。默认为 -1 (使用默认值)。
+            down_time (float, optional): 按键按下的持续时间。默认为 0.01。
+        """
+        self.send_key(
+            self.get_arc_key(), interval=interval, down_time=down_time, after_sleep=after_sleep
         )
 
     def send_ultimate_key(self, after_sleep=0, interval=-1, down_time=0.01):
@@ -667,9 +683,7 @@ class BaseChar:
         current_char = self.task.get_current_char(raise_exception=False)
         for char in self.task.chars:
             if char != current_char:
-                priority = char.do_get_switch_priority(
-                    current_char=current_char, has_intro=False, target_low_con=False
-                )
+                priority = char.do_get_switch_priority()
                 if priority >= Priority.FAST_SWITCH:
                     self.logger.info(f"In lock with {char}")
                     return True

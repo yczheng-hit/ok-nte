@@ -475,9 +475,17 @@ class BaseCombatTask(CombatCheck):
         """获取技能的按键。
 
         Returns:
-            str: 声骸技能的按键字符串。
+            str: 技能的按键字符串。
         """
         return self.key_config["Skill Key"]
+
+    def get_arc_key(self):
+        """获取弧盘技能的按键。
+
+        Returns:
+            str: 弧盘技能的按键字符串。
+        """
+        return self.key_config["Arc Key"]
 
     def has_skill_cd(self):
         """检查技能是否在冷却中。
@@ -722,7 +730,7 @@ class BaseCombatTask(CombatCheck):
 
         # 1. 预处理：灰度化 + 二值化
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
         # 2. 构造环形掩模 (Mask) —— 进一步排除干扰
         # 环厚度约 12%，我们可以只看这个半径范围内的像素

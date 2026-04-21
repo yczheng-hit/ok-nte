@@ -57,6 +57,7 @@ class CustomChar(BaseChar):
         return [
             Cmd("skill", cls.custom_click_skill, PARAM_NONE, "释放技能", "skill", True),
             Cmd("ultimate", cls.click_ultimate, PARAM_NONE, "释放终结技", "ultimate", True),
+            Cmd("arc", cls.click_arc, PARAM_NONE, "释放弧盘技能", "arc", False),
             Cmd(
                 "l_click",
                 cls.smart_left_click,

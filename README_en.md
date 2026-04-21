@@ -135,7 +135,7 @@ If the solutions above do not resolve your issue, feel free to report it via [**
 ### Contributors
 
 <a href="https://github.com/BnanZ0/ok-nte/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=BnanZ0/ok-nte" width="40" />
+  <img src="https://contrib.rocks/image?repo=BnanZ0/ok-nte" />
 </a>
 
 ### Sponsors

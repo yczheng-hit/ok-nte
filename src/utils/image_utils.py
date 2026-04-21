@@ -220,6 +220,8 @@ def create_color_mask(cv_image: np.ndarray, color_range, invert: bool = False) -
     return output_image
 
 
-def display_image(image, name="image"):
+def display_image(image: np.ndarray, name="image", scale=None):
+    if isinstance(scale, float) or isinstance(scale, int):
+        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
     cv2.imshow(name, image)
     cv2.waitKey(0)
