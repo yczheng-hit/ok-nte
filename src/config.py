@@ -135,12 +135,19 @@ config = {
         "default_threshold": 0.8,  # 默认threshold
         "feature_processor": process_feature,
     },
+    'template_tab': {
+        # 默认是否生成标签枚举
+        'generate_label_enum': True,
+        # 默认标签枚举的相对路径
+        'label_enum_relative_path': 'src/Labels',
+    },
     "version": version,  # 版本
     "my_app": [
         "src.globals",
         "Globals",
     ],  # 可选. 全局单例对象, 可以存放加载的模型, 使用og.my_app调用
     "onetime_tasks": [  # 用户点击触发的任务
+        ["src.tasks.DailyTask", "DailyTask"],
         ["src.tasks.MyOneTimeTask", "MyOneTimeTask"],
         # ["src.tasks.MyOneTimeWithAGroup", "MyOneTimeWithAGroup"],
         # ["src.tasks.MyOneTimeWithAGroup2", "MyOneTimeWithAGroup2"],
