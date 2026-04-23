@@ -3,6 +3,7 @@ import os
 import numpy as np
 from ok import ConfigOption
 
+from src.interaction.NTEInteraction import NTEInteraction
 from src.process_feature import process_feature
 
 version = "dev"
@@ -86,7 +87,7 @@ config = {
     "windows": {  # Windows游戏请填写此设置
         "exe": ["HTGame.exe"],
         "hwnd_class": "UnrealWindow",
-        "interaction": "PostMessage",  # Genshin:某些操作可以后台, 部分游戏支持 PostMessage:可后台点击, 极少游戏支持 ForegroundPostMessage:前台使用PostMessage Pynput/PyDirect:仅支持前台使用
+        "interaction": [NTEInteraction, "Pynput"],  # Genshin:某些操作可以后台, 部分游戏支持 PostMessage:可后台点击, 极少游戏支持 ForegroundPostMessage:前台使用PostMessage Pynput/PyDirect:仅支持前台使用
         "capture_method": [
             "WGC",
             "BitBlt_RenderFull",
@@ -166,7 +167,7 @@ config = {
     ],
     "trigger_tasks": [  # 不断执行的触发式任务
         ["src.tasks.trigger.AutoCombatTask", "AutoCombatTask"],
-        # ["src.tasks.MyTriggerTask", "MyTriggerTask"],
+        ["src.tasks.trigger.SkipDialogTask", "SkipDialogTask"],
     ],
     "custom_tabs": [
         ["src.ui.CharHubTab", "CharHubTab"]

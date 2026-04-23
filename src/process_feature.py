@@ -15,3 +15,5 @@ def process_feature(feature_name, feature: Feature):
             feature.mat = iu.binarize_bgr_by_brightness(feature.mat, threshold=180)
         case Labels.mini_map_arrow:
             feature.mat = iu.binarize_bgr_by_brightness(feature.mat, threshold=200)
+        case Labels.skip_dialog:
+            feature.mat = iu.isolate_dialog_to_white(feature.mat)

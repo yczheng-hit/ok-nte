@@ -20,7 +20,6 @@ class BaseNTETask(BaseTask):
         self.key_config = self.get_global_config("Game Hotkey Config")
         self._logged_in = False
         self.arrow_contour = {"contours": None, "shape": None}
-        self.ocr
 
     @property
     def thread_pool_executor(self) -> ThreadPoolExecutor:

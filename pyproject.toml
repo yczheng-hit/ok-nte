@@ -10,6 +10,7 @@ dependencies = [
     "opencc>=1.2.0",
     "opencv-python>=4.13.0.92",
     "openvino>=2026.1.0",
+    "pynput>=1.8.1",
     "pyside6==6.9.1",
     "scikit-image>=0.26.0",
 ]

@@ -14,4 +14,8 @@ class Labels(str, Enum):
     char_3_text = 'char_3_text'
     char_4_text = 'char_4_text'
     health_bar_slash = 'health_bar_slash'
+    message = 'message'
+    message_dialog = 'message_dialog'
     mini_map_arrow = 'mini_map_arrow'
+    skip_dialog = 'skip_dialog'
+    skip_quest_confirm = 'skip_quest_confirm'

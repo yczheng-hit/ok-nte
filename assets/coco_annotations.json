@@ -17,6 +17,24 @@
             "file_name": "images/0.png",
             "width": 2560,
             "height": 1440
+        },
+        {
+            "id": 4,
+            "file_name": "images/0.png",
+            "width": 2560,
+            "height": 1440
+        },
+        {
+            "id": 5,
+            "file_name": "images/0.png",
+            "width": 2560,
+            "height": 1440
+        },
+        {
+            "id": 6,
+            "file_name": "images/0.png",
+            "width": 2560,
+            "height": 1440
         }
     ],
     "annotations": [
@@ -188,9 +206,66 @@
             ],
             "area": 459,
             "iscrowd": 0
+        },
+        {
+            "id": 14,
+            "image_id": 6,
+            "category_id": 1,
+            "bbox": [
+                152,
+                250,
+                55,
+                44
+            ],
+            "area": 2420,
+            "iscrowd": 0
+        },
+        {
+            "id": 15,
+            "image_id": 6,
+            "category_id": 13,
+            "bbox": [
+                1282,
+                911,
+                46,
+                39
+            ],
+            "area": 1794,
+            "iscrowd": 0
+        },
+        {
+            "id": 16,
+            "image_id": 4,
+            "category_id": 16,
+            "bbox": [
+                2454,
+                71,
+                42,
+                28
+            ],
+            "area": 1176,
+            "iscrowd": 0
+        },
+        {
+            "id": 17,
+            "image_id": 5,
+            "category_id": 17,
+            "bbox": [
+                1433,
+                847,
+                162,
+                86
+            ],
+            "area": 13932,
+            "iscrowd": 0
         }
     ],
     "categories": [
+        {
+            "id": 1,
+            "name": "message",
+            "supercategory": ""
+        },
         {
             "id": 2,
             "name": "boss_lv_text",
@@ -247,6 +322,11 @@
             "supercategory": ""
         },
         {
+            "id": 13,
+            "name": "message_dialog",
+            "supercategory": ""
+        },
+        {
             "id": 14,
             "name": "health_bar_slash",
             "supercategory": ""
@@ -254,6 +334,16 @@
         {
             "id": 15,
             "name": "mini_map_arrow",
+            "supercategory": ""
+        },
+        {
+            "id": 16,
+            "name": "skip_dialog",
+            "supercategory": ""
+        },
+        {
+            "id": 17,
+            "name": "skip_quest_confirm",
             "supercategory": ""
         }
     ]

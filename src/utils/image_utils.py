@@ -4,10 +4,17 @@ from ok import color_range_to_bound
 
 from src import text_white_color
 
+dialog_white_color = {
+    'r': (220, 240),  # Red range
+    'g': (220, 240),  # Green range
+    'b': (220, 240)  # Blue range
+}
 
 def isolate_cd_to_black(cv_image):
     return create_color_mask(cv_image, text_white_color, invert=True)
 
+def isolate_dialog_to_white(cv_image):
+    return create_color_mask(cv_image, dialog_white_color, invert=False)
 
 def binarize_bgr_by_brightness(image, threshold=180, binary=False):
     """
