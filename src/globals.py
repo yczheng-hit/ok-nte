@@ -21,28 +21,44 @@ class Globals(QObject):
 
     def ocr_init(self, done, error, seconds_left):
         if done and error == "" and seconds_left == 0 and not self._ocr_init:
+            self._ocr_init = True
             import threading
 
-            t = threading.Thread(
-                target=lambda: og.executor.get_all_tasks()[0].ocr(0, 0, 0.01, 0.01)
-            )
-            t.daemon = True
+            def run_background_init():
+                try:
+                    logger.info("Starting background OCR initialization...")
+
+                    if getattr(og, "executor", None) is None:
+                        logger.warning("og.executor is not initialized yet.")
+                        return
+
+                    all_tasks = og.executor.get_all_tasks()
+                    if all_tasks and hasattr(all_tasks[0], "ocr"):
+                        logger.info("Warming up default OCR...")
+                        all_tasks[0].ocr(0, 0, 0.01, 0.01)
+
+                    self.init_bg_ocr()
+
+                    bg_ocr = getattr(og.executor, "_ocr_lib", {}).get("bg_onnx_ocr")
+                    if bg_ocr:
+                        logger.info("Warming up background OCR...")
+                        bg_ocr.ocr(np.zeros((50, 50, 3), dtype=np.uint8))
+
+                    logger.info("Background OCR initialization finished.")
+                except Exception as e:
+                    logger.error(f"Failed to initialize OCR in background: {e}")
+
+            t = threading.Thread(target=run_background_init, daemon=True)
             t.start()
-            self.init_bg_ocr()
-            t2 = threading.Thread(
-                target=lambda: og.executor._ocr_lib["bg_onnx_ocr"].ocr(
-                    np.zeros((50, 50, 3), dtype=np.uint8)
-                )
-            )
-            t2.daemon = True
-            t2.start()
-            self._ocr_init = True
 
     def init_bg_ocr(self):
         from onnxocr.onnx_paddleocr import ONNXPaddleOcr
 
-        config_params = og.executor.config.get("ocr").get("default").get("params")
-        logger.info(f"init bg onnxocr {config_params}")
+        ocr_config = og.executor.config.get("ocr", {})
+        bg_config = ocr_config.get("bg_onnx_ocr") or ocr_config.get("default", {})
+        config_params = bg_config.get("params", {})
+
+        logger.info(f"Initializing bg onnxocr with params: {config_params}")
         og.executor._ocr_lib["bg_onnx_ocr"] = ONNXPaddleOcr(
             use_angle_cls=False,
             logger=logger,
@@ -70,7 +86,7 @@ class Globals(QObject):
 
         if self.thread_pool_executor is None:
             logger.info(f"create thread pool executor, max_workers: {max_workers}")
-            self.thread_pool_exit_event.clear()
+            self.thread_pool_exit_event = Event()
             self.thread_pool_executor = ThreadPoolExecutor(max_workers=max_workers)
             self._thread_pool_executor_max_workers = max_workers
 
@@ -95,11 +111,12 @@ class Globals(QObject):
         :param kwargs: 关键字参数
         """
         executor = self.get_thread_pool_executor()
+        exit_event = self.thread_pool_exit_event
 
         def loop_wrapper():
             logger.debug(f"Periodic task {task.__name__} started.")
 
-            while not self.thread_pool_exit_event.is_set():
+            while not exit_event.is_set():
                 should_stop = False
                 try:
                     if task(*args, **kwargs) is False:
@@ -111,7 +128,7 @@ class Globals(QObject):
                     logger.debug(f"Periodic task {task.__name__} decided to stop.")
                     break
 
-                if self.thread_pool_exit_event.wait(timeout=delay):
+                if exit_event.wait(timeout=delay):
                     logger.debug(f"Periodic task {task.__name__} received stop signal.")
                     break
 
