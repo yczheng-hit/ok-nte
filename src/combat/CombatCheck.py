@@ -332,8 +332,9 @@ class CombatCheck(BaseNTETask):
         if self.ocr(
             frame=frame,
             box=self.main_viewport,
-            frame_processor=iu.isolate_cd_to_black,
+            frame_processor=iu.isolate_lv_to_black,
             match=re.compile(r"lv", re.IGNORECASE),
+            target_height=720,
             lib="bg_onnx_ocr",
         ):
             return True, "lv"
