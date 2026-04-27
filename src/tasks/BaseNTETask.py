@@ -358,6 +358,20 @@ class BaseNTETask(BaseTask):
         )
         self.send_key_up("w")
 
+    def click_traval_button(self, travel_btn=None):
+        if travel_btn is None:
+            box = self.box_of_screen(0.7246, 0.8535, 0.7789, 0.9313)
+            for feature_name in [Labels.skip_quest_confirm]:
+                if (feature := self.find_one(feature_name, threshold=0.7, box=box)):
+                    travel_btn = feature
+                    break
+        if travel_btn:
+            self.sleep(0.5)
+            x, y = travel_btn.center()
+            self.click(x, y, after_sleep=1, move=True)
+            return True
+        return False
+
 
 def interactable_mask(image):
     mask = iu.create_color_mask(image, interac_pink_color, binary=True)
