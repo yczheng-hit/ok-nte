@@ -1,8 +1,8 @@
 import os
 
 import numpy as np
-from ok import ConfigOption
 
+from ok import ConfigOption
 from src.interaction.NTEInteraction import NTEInteraction
 from src.process_feature import process_feature
 

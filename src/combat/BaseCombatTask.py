@@ -690,7 +690,7 @@ class BaseCombatTask(CombatCheck):
                     raw_template = cv2.resize(
                         raw_template,
                         (int(w * element_scale), int(h * element_scale)),
-                        interpolation=cv2.INTER_NEAREST
+                        interpolation=cv2.INTER_NEAREST,
                     )
                     template_bin = preprocess_image(raw_template)
                     _, mask = cv2.threshold(template_bin, 127, 255, cv2.THRESH_BINARY)
@@ -709,7 +709,9 @@ class BaseCombatTask(CombatCheck):
             crop_img = current_box.crop_frame(_frame)
             crop_h, crop_w = crop_img.shape[:2]
             crop_resized = cv2.resize(
-                crop_img, (int(crop_w * scale), int(crop_h * scale)), interpolation=cv2.INTER_NEAREST
+                crop_img,
+                (int(crop_w * scale), int(crop_h * scale)),
+                interpolation=cv2.INTER_NEAREST,
             )
             # iu.show_images([crop_resized, crop_img], [f"crop_resized_{i}", f"crop_img_{i}"])
 

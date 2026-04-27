@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
-from ok import Box, Logger, color_range_to_bound, find_color_rectangles
 
+from ok import Box, Logger, color_range_to_bound, find_color_rectangles
 from src.Labels import Labels
 from src.tasks.BaseNTETask import BaseNTETask
 from src.utils import game_filters as gf

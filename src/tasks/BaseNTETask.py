@@ -1,7 +1,6 @@
 import ctypes
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
 
 import cv2
 import numpy as np
