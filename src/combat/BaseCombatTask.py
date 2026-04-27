@@ -51,7 +51,6 @@ class BaseCombatTask(CombatCheck):
     )
     element_ring_index = {element: index for index, element in enumerate(element_ring)}
     _element_template_cache = {}
-    _element_standard_size = None
 
     def __init__(self, *args, **kwargs):
         """初始化战斗任务。
@@ -680,17 +679,19 @@ class BaseCombatTask(CombatCheck):
         base_box = self.get_base_char_element_box()
 
         if not self._element_template_cache:
-            ref_img = cv2.imread(f"assets/esper_icons/{Element.BLUE.value}.png")
-            if ref_img is not None:
-                h, w = ref_img.shape[:2]
-                self._element_standard_size = (w, h)
-
+            element_scale = 0.5
             for element in target_elements:
                 raw_template = cv2.imread(
                     f"assets/esper_icons/{element.value}.png", cv2.IMREAD_UNCHANGED
                 )
                 if raw_template is not None:
+                    h, w = raw_template.shape[:2]
                     raw_template = process_transparency(raw_template)
+                    raw_template = cv2.resize(
+                        raw_template,
+                        (int(w * element_scale), int(h * element_scale)),
+                        interpolation=cv2.INTER_NEAREST
+                    )
                     template_bin = preprocess_image(raw_template)
                     _, mask = cv2.threshold(template_bin, 127, 255, cv2.THRESH_BINARY)
                     kernel = np.ones((30, 30), np.uint8)
@@ -702,7 +703,7 @@ class BaseCombatTask(CombatCheck):
         # self.screenshot("load_chars_element", _frame)
 
         for i in range(count):
-            base_scale = 16
+            base_scale = 8
             scale = base_scale * 1440 / self.height
             current_box = self.get_box_by_char_spacing(base_box, i)
             crop_img = current_box.crop_frame(_frame)
