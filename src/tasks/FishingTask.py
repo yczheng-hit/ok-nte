@@ -33,12 +33,29 @@ class FishingTask(BaseNTETask):
         self.default_config.update(
             {
                 "循环次数": 1,
+                "控条方式": "状态切换",
+                "离散按键倍数": 1.0,
             }
         )
+        self.config_description.update(
+            {
+                "控条方式": "状态切换：快，持续按住，平滑流畅\n离散按键：慢，防止过冲",
+                "离散按键倍数": "控制实际的按键hold时间，倍数根据实际情况自行调整",
+            }
+        )
+        self.config_type["控条方式"] = {
+            "type": "drop_down",
+            "options": ["状态切换", "离散按键"],
+        }
         self._fishing_started = False
         self._last_bar_log_time = 0.0
         self._morph_kernel = np.ones((3, 3), dtype=np.uint8)
         self._bar_active_key = None
+        self.add_exit_after_config()
+        
+    def click(self, *args, **kwargs):
+        kwargs.setdefault("move", True)
+        return super().click(*args, **kwargs)
 
     def run(self):
         NTEOneTimeTask.run(self)
@@ -146,7 +163,10 @@ class FishingTask(BaseNTETask):
                 if self.is_valid_bar_state(state):
                     self.apply_bar_control(state)
                 else:
-                    self._set_bar_key(None)
+                    # 只在状态切换模式下清理按键
+                    mode = self.config.get("控条方式", "状态切换")
+                    if mode == "状态切换":
+                        self._set_bar_key(None)
 
                 if time.time() > start_check_time:
                     if self.is_fish_bait_exist():
@@ -167,9 +187,20 @@ class FishingTask(BaseNTETask):
                 self.log_error("控条阶段超时")
             return False
         finally:
-            self._set_bar_key(None)
+            # 只在状态切换模式下清理按键
+            mode = self.config.get("控条方式", "状态切换")
+            if mode == "状态切换":
+                self._set_bar_key(None)
 
     def apply_bar_control(self, state: dict):
+        mode = self.config.get("控条方式", "状态切换")
+        if mode == "离散按键":
+            self.apply_bar_control_discrete(state)
+        else:
+            self.apply_bar_control_hold(state)
+
+    def apply_bar_control_hold(self, state: dict):
+        """按住/释放状态切换模式 (默认)"""
         now = time.time()
         pointer = int(state["pointer_center"])
         zone_left = int(state["zone_left"])
@@ -192,6 +223,43 @@ class FishingTask(BaseNTETask):
 
         key = "d" if error < 0 else "a"
         self._set_bar_key(key)
+
+    def apply_bar_control_discrete(self, state: dict):
+        """离散按键模式 (使用 send_key + down_time)"""
+        now = time.time()
+        pointer = int(state["pointer_center"])
+        zone_left = int(state["zone_left"])
+        zone_right = int(state["zone_right"])
+
+        zone_center = (zone_left + zone_right) // 2
+        zone_width = max(1, zone_right - zone_left)
+
+        dist_from_center = pointer - zone_center
+        abs_dist = abs(dist_from_center)
+
+        deadzone = max(2, int(zone_width * 0.06))
+
+        if abs_dist <= deadzone:
+            if now - self._last_bar_log_time > 0.5:
+                self.log_debug(f"指针已锁定中心: pointer={pointer}, target={zone_center}")
+                self._last_bar_log_time = now
+            return
+
+        key = "d" if dist_from_center < 0 else "a"
+
+        ratio = abs_dist / (zone_width / 2)
+
+        base_hold = 0.015
+
+        hold_ext = (ratio ** 1.2) * 0.15
+        hold = base_hold + hold_ext
+
+        hold = min(0.20, max(0.01, hold))
+        
+        multiplier = float(self.config.get("离散按键倍数", 1.0))
+        hold = hold * multiplier
+
+        self.send_key(key, down_time=hold)
 
     def _set_bar_key(self, key):
         if key == self._bar_active_key:
