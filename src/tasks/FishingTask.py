@@ -51,11 +51,8 @@ class FishingTask(BaseNTETask):
         self._last_bar_log_time = 0.0
         self._morph_kernel = np.ones((3, 3), dtype=np.uint8)
         self._bar_active_key = None
+        self.sleep_check_interval = 1
         self.add_exit_after_config()
-        
-    def click(self, *args, **kwargs):
-        kwargs.setdefault("move", True)
-        return super().click(*args, **kwargs)
 
     def run(self):
         NTEOneTimeTask.run(self)
@@ -66,6 +63,11 @@ class FishingTask(BaseNTETask):
         except Exception as e:
             self.log_error("FishingTask error", e)
             raise
+
+    def sleep_check(self):
+        if self.should_check_monthly_card():
+            self.handle_monthly_card()
+        return
 
     def do_run(self):
         self.reset_runtime_state()

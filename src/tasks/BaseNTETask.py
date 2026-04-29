@@ -381,13 +381,13 @@ class BaseNTETask(BaseTask):
         )
         self.send_key_up("w")
 
+    def find_traval_button(self):
+        box = self.box_of_screen(0.8160, 0.8549, 0.9902, 0.9292)
+        return self.find_one(Labels.skip_quest_confirm, box=box, use_gray_scale=True, threshold=0.6)
+
     def click_traval_button(self, travel_btn=None):
-        if travel_btn is None:
-            box = self.box_of_screen(0.7246, 0.8535, 0.7789, 0.9313)
-            for feature_name in [Labels.skip_quest_confirm]:
-                if feature := self.find_one(feature_name, threshold=0.7, box=box):
-                    travel_btn = feature
-                    break
+        if not travel_btn:
+            travel_btn = self.find_traval_button()
         if travel_btn:
             self.sleep(0.5)
             self.click(travel_btn, after_sleep=1, move=True, down_time=0.01)
