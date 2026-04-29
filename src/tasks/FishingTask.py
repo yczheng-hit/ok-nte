@@ -51,6 +51,7 @@ class FishingTask(BaseNTETask):
         self._last_bar_log_time = 0.0
         self._morph_kernel = np.ones((3, 3), dtype=np.uint8)
         self._bar_active_key = None
+        self._last_direction = None
         self.sleep_check_interval = 1
         self.add_exit_after_config()
 
@@ -268,13 +269,13 @@ class FishingTask(BaseNTETask):
         key = "d" if dist_from_center < 0 else "a"
 
         # 方向变化削弱
-        if key != getattr(self, "_last_direction", None):
+        if key != self._last_direction:
             hold *= 0.6
 
         self._last_direction = key
 
         # 倍率
-        multiplier = float(self.config.get("离散按键倍数", 1.0))
+        multiplier = float(self.config.get("点按时长倍率", 1.0))
         hold *= multiplier
 
         # 限制
@@ -360,6 +361,8 @@ class FishingTask(BaseNTETask):
         self._set_bar_key(None)
         self._fishing_started = False
         self._last_bar_log_time = 0.0
+        self._last_direction = None
+        self._bar_active_key = None
 
     def detect_fishing_bar_state(self):
         """
