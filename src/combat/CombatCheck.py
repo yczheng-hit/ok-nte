@@ -339,10 +339,10 @@ class CombatCheck(BaseNTETask):
         if self.combat_detect_future and self.combat_detect_future.done():
             ret, reason = self.combat_detect_future.result()
             self.combat_detect_future = None
-            self.logger.info(f"combat_detect_future result: {ret}, reason: {reason}")
+            # self.logger.info(f"combat_detect_future result: {ret}, reason: {reason}")
             return ret
         if self.combat_detect_future is None:
-            self.logger.info("combat_detect_future submit")
+            # self.logger.info("combat_detect_future submit")
             frame = self.frame
             self.combat_detect_future = self.thread_pool_executor.submit(
                 self.combat_detect, frame=frame, target=target, lv=lv
