@@ -1,7 +1,7 @@
 import time
+
 from ok import Logger, TriggerTask
 
-from src import text_white_color
 from src.Labels import Labels
 from src.tasks.BaseNTETask import BaseNTETask
 from src.utils import game_filters as gf
@@ -31,7 +31,7 @@ class SkipDialogTask(TriggerTask, BaseNTETask):
         )
 
     def run(self):
-        if self.scene.in_team(self.is_in_team):
+        if self.scene.is_in_team(self.is_in_team):
             return
         if self.config.get("跳过剧情") and self.in_story():
             if self.check_skip():

@@ -388,6 +388,9 @@ class BaseChar:
         """
         if not self.task.use_ultimate:
             return False
+        if self.task._combat_detect_settle is not None:
+            self.logger.info("click_ultimate blocked by combat_detect_settle")
+            return False
         self.logger.debug("click_ultimate start")
         start = time.time()
         last_click = 0

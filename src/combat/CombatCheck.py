@@ -145,7 +145,12 @@ class CombatCheck(BaseNTETask):
         sym_score = (h_sym + v_sym) / 2
 
         pad = 5
-        if ty >= pad and tx >= pad and ty + th + pad < roi_shape[0] and tx + tw + pad < roi_shape[1]:
+        if (
+            ty >= pad
+            and tx >= pad
+            and ty + th + pad < roi_shape[0]
+            and tx + tw + pad < roi_shape[1]
+        ):
             outer_bin = roi_bin[ty - pad : ty + th + pad, tx - pad : tx + tw + pad]
             outer_white = cv2.countNonZero(outer_bin)
             iso_score = white_count / outer_white if outer_white > 0 else 0
@@ -325,7 +330,7 @@ class CombatCheck(BaseNTETask):
             if self.combat_end_condition is not None and self.combat_end_condition():
                 return self.reset_to_false(reason="end condition reached")
             combat_detect = self.async_combat_detect()
-            
+
             if combat_detect is None:
                 return self.scene.set_in_combat()
             elif combat_detect is True:
@@ -359,7 +364,9 @@ class CombatCheck(BaseNTETask):
             in_combat = (is_boss or has_lv) and (is_auto or has_target)
             if in_combat:
                 # self.log_info(f"enter combat cost1 {time.time() - now}")
-                if not has_target and not self.target_enemy(wait=True, lv=False):
+                if is_boss:
+                    self.middle_click()
+                elif not has_target and not self.target_enemy(wait=True, lv=False):
                     return False
                 # self.log_info(f"enter combat cost2 {time.time() - now}")
                 self._in_combat = self.load_chars()

@@ -11,8 +11,8 @@ import win32api
 import win32con
 import win32gui
 import win32process
-
 from ok import BaseTask, Box, Logger, og, safe_get
+
 from src.Labels import Labels
 from src.scene.NTEScene import NTEScene
 from src.scene.ScreenPosition import ScreenPosition
@@ -111,6 +111,11 @@ class BaseNTETask(BaseTask):
     def in_team(self):
         if not self.is_in_team():
             return False, -1, 0
+
+        if self.scene is not None:
+            state, timestamp = self.scene.get_is_in_team_record()
+            if state and (to_sleep := 0.2 - (time.time() - timestamp)) > 0:
+                self.sleep(to_sleep)
 
         arr = self.update_char_ui_offset()
 
