@@ -58,9 +58,9 @@ class CustomChar(BaseChar):
             Cmd(
                 "skill",
                 cls.custom_click_skill,
-                "是否长按(True/False)，默认False",
+                "按下秒数, 默认0.01秒",
                 "释放技能",
-                "skill, skill(True)",
+                "skill, skill(0.5)",
                 True,
             ),
             Cmd("ultimate", cls.click_ultimate, PARAM_NONE, "释放终结技", "ultimate", True),
@@ -121,7 +121,7 @@ class CustomChar(BaseChar):
                 cls._execute_if_command,
                 "条件命令、一个或多个目标命令",
                 "条件执行：仅可使用标记为（可用于 if_ 条件）的命令作为条件命令",
-                "if_(ultimate, skill), if_(ultimate, l_click(2), wait(0.1))",
+                "if_(ultimate, skill), if_(skill(0.5), l_click(2), wait(0.1))",
             ),
         ]
 
@@ -187,26 +187,23 @@ class CustomChar(BaseChar):
 
         cond_node = node.args[0]
         then_nodes = node.args[1:]
-        if not isinstance(cond_node, ast.Name):
-            return (
-                None,
-                f"{cls._node_loc(cond_node)}: if_ condition must be a command name "
-                f"without arguments",
-            )
+        cond_cmd, err = cls._parse_command_node(
+            cond_node,
+            combo_str=combo_str,
+            aliases=aliases,
+            if_capable_map=if_capable_map,
+            allow_if=False,
+        )
+        if err:
+            return None, err
 
-        cond_name = cond_node.id
-        cond_target = cls._resolve_target(cond_name, aliases)
-        if cond_target is None:
-            return None, f"{cls._node_loc(cond_node)}: unknown command '{cond_name}'"
+        cond_name = cond_cmd[0]
         if not if_capable_map.get(cond_name, False):
             return (
                 None,
                 f"{cls._node_loc(cond_node)}: command '{cond_name}' is not enabled as "
                 f"if_ condition",
             )
-
-        cond_cmd_text = ast.get_source_segment(combo_str, cond_node) or cond_name
-        cond_cmd = (cond_name, cond_target, [], {}, cond_cmd_text)
 
         then_cmds = []
         for then_node in then_nodes:
@@ -413,5 +410,5 @@ class CustomChar(BaseChar):
     def keypress(self, key):
         self.task.send_key(key=key)
 
-    def custom_click_skill(self, hold=False) -> bool:
-        return self.click_skill(hold=hold)[0]
+    def custom_click_skill(self, down_time=0.01) -> bool:
+        return self.click_skill(down_time=down_time)[0]

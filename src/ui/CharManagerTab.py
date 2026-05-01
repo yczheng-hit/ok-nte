@@ -3,6 +3,7 @@ import platform
 import shutil
 import subprocess
 import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -615,13 +616,20 @@ class CharManagerTab(CustomTab):
 
         old_ocr = task.ocr
         old_chars = task.chars
+        old_sleep = task.sleep
 
         def locked_ocr(*args, **kwargs):
             with task._ocr_lock:
                 return old_ocr(*args, **kwargs)
 
+        def simple_sleep(timeout):
+            if timeout > 0:
+                time.sleep(timeout)
+            return True
+
         task.ocr = locked_ocr
         task.chars = [test_char]
+        task.sleep = simple_sleep
         try:
             test_char.is_current_char = True
             test_char.switch_next_char = lambda *args, **kwargs: None
@@ -632,6 +640,7 @@ class CharManagerTab(CustomTab):
 
             test_char.perform()
         finally:
+            task.sleep = old_sleep
             task.chars = old_chars
             task.ocr = old_ocr
 

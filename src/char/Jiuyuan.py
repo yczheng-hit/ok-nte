@@ -24,7 +24,7 @@ class Jiuyuan(BaseChar):
 
     def has_bullets(self, box):
         pct = self.task.calculate_color_percentage(bullet_color, box)
-        self.logger.debug(f"Jiuyuan has_bullets {pct}")
+        # self.logger.debug(f"Jiuyuan has_bullets {pct}")
         return pct > 0.1
 
 

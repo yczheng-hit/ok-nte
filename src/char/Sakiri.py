@@ -11,4 +11,4 @@ class Sakiri(BaseChar):
         if self.has_intro:
             self.continues_normal_attack(2)
         self.click_ultimate()
-        self.click_skill(hold=True)
+        self.click_skill(down_time=0.25)
