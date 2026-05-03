@@ -148,3 +148,4 @@ If the solutions above do not resolve your issue, feel free to report it via [**
 *   [ok-oldking/OnnxOCR](https://github.com/ok-oldking/OnnxOCR)
 *   [zhiyiYo/PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
 *   [Toufool/AutoSplit](https://github.com/Toufool/AutoSplit)
+*   [ImLaoBJie/ZZZSoundTrigger](https://github.com/ImLaoBJie/ZZZSoundTrigger)
