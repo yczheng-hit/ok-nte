@@ -394,3 +394,9 @@ msgstr ""
 
 msgid "Sound-based dodge and counter trigger settings"
 msgstr ""
+
+msgid "Dodge All Attacks"
+msgstr ""
+
+msgid "Dodge all attacks without performing counter attacks"
+msgstr ""

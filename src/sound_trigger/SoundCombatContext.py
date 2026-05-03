@@ -35,6 +35,7 @@ class SoundCombatContext:
         self._is_active = False
         self._config = {}
         self._enable_sound_trigger = True
+        self._dodge_all_attacks = True
         self._pending_task = None
         self._pending_config = None
         self._pending_action = None
@@ -45,7 +46,7 @@ class SoundCombatContext:
         cls._combat_interrupt.set()
         logger.info("SoundCombatContext: Combat interrupt signal sent, main thread should pause")
 
-        if not hasattr(cls, '_clear_seq'):
+        if not hasattr(cls, "_clear_seq"):
             cls._clear_seq = 0
         cls._clear_seq += 1
         current_seq = cls._clear_seq
@@ -60,6 +61,7 @@ class SoundCombatContext:
             if cls._clear_seq == seq:
                 cls._combat_interrupt.clear()
                 cls._action_complete.set()
+
         threading.Thread(target=delayed_clear, args=(current_seq,), daemon=True).start()
 
     @classmethod
@@ -73,7 +75,7 @@ class SoundCombatContext:
 
     @classmethod
     def clear_priority(cls):
-        if hasattr(cls, '_clear_seq'):
+        if hasattr(cls, "_clear_seq"):
             cls._clear_seq += 1
         cls._combat_interrupt.clear()
         cls._action_complete.set()
@@ -97,6 +99,7 @@ class SoundCombatContext:
         enable_sound_trigger: bool = True,
         sample_path: str = "./assets/sounds/dodge.wav",
         counter_attack_sample_path: str = "./assets/sounds/counter.wav",
+        dodge_all_attacks: bool = True,
         threshold: float = 0.13,
         counter_attack_threshold: float = 0.12,
         **kwargs,
@@ -106,9 +109,12 @@ class SoundCombatContext:
                 return
 
             if self._pending_config is not None:
-                enable_sound_trigger, threshold, counter_attack_threshold = self._pending_config
+                enable_sound_trigger, dodge_all_attacks, threshold, counter_attack_threshold = (
+                    self._pending_config
+                )
 
             self._enable_sound_trigger = enable_sound_trigger
+            self._dodge_all_attacks = dodge_all_attacks
 
             if not (0.0 <= threshold <= 1.0):
                 raise ValueError("threshold must be between 0.0 and 1.0")
@@ -118,6 +124,7 @@ class SoundCombatContext:
             self._config = {
                 "sample_path": sample_path,
                 "counter_attack_sample_path": counter_attack_sample_path,
+                "dodge_all_attacks": dodge_all_attacks,
                 "threshold": threshold,
                 "counter_attack_threshold": counter_attack_threshold,
             }
@@ -171,7 +178,7 @@ class SoundCombatContext:
 
     def _queue_action(self, action):
         with self._context_lock:
-            if self._trigger is None or self._trigger.task is None or self._trigger.task.paused:
+            if self._trigger is None or self._trigger.task is None or self._trigger.task.executor.paused:
                 return
             if self.should_interrupt_combat():
                 return
@@ -193,7 +200,7 @@ class SoundCombatContext:
         self._queue_action("dodge")
 
     def _on_counter_triggered(self):
-        self._queue_action("counter")
+        self._queue_action("dodge" if self._dodge_all_attacks else "counter")
 
     def execute_pending_action(self):
         with self._context_lock:
@@ -201,7 +208,7 @@ class SoundCombatContext:
             self._pending_action = None
             trigger = self._trigger
 
-        if action is None or trigger is None or trigger.task is None or trigger.task.paused:
+        if action is None or trigger is None or trigger.task is None or trigger.task.executor.paused:
             self.exit_priority()
             return
 
@@ -224,10 +231,17 @@ class SoundCombatContext:
                 self._pending_action = None
                 self.clear_priority()
 
-    def update_config(self, enable: bool, dodge_threshold: float, counter_threshold: float):
+    def update_config(
+        self,
+        enable: bool,
+        dodge_all_attacks: bool,
+        dodge_threshold: float,
+        counter_threshold: float,
+    ):
         with self._context_lock:
-            self._pending_config = (enable, dodge_threshold, counter_threshold)
+            self._pending_config = (enable, dodge_all_attacks, dodge_threshold, counter_threshold)
             self._enable_sound_trigger = enable
+            self._dodge_all_attacks = dodge_all_attacks
             if self._listener:
                 self._listener.threshold = dodge_threshold
                 self._listener.counter_attack_threshold = counter_threshold
@@ -241,7 +255,7 @@ class SoundCombatContext:
         task = trigger.task
         if not task:
             return False
-        return not task.paused
+        return not task.executor.paused
 
     @property
     def is_active(self) -> bool:
@@ -266,6 +280,7 @@ class SoundCombatContext:
             self._trigger = None
             self._is_active = False
             self._config = {}
+            self._dodge_all_attacks = True
             self._pending_task = None
             self._pending_config = None
             self._pending_action = None

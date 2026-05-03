@@ -394,3 +394,9 @@ msgstr "Configuración del disparador de sonido"
 
 msgid "Sound-based dodge and counter trigger settings"
 msgstr "Ajustes de activación de esquiva y contraataque basados en sonido"
+
+msgid "Dodge All Attacks"
+msgstr "Esquivar todos los ataques"
+
+msgid "Dodge all attacks without performing counter attacks"
+msgstr "Esquivar todos los ataques sin realizar contraataques"

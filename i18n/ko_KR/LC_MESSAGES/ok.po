@@ -394,3 +394,9 @@ msgstr "사운드 트리거 설정"
 
 msgid "Sound-based dodge and counter trigger settings"
 msgstr "사운드 기반 회피 및 반격 트리거 설정"
+
+msgid "Dodge All Attacks"
+msgstr "모든 공격 회피"
+
+msgid "Dodge all attacks without performing counter attacks"
+msgstr "반격을 수행하지 않고 모든 공격을 회피합니다"

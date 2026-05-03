@@ -188,6 +188,8 @@ class SoundListener:
 
                         self._check_triggers(dodge_score, counter_score)
 
+                        # self._draw_debug_visual(dodge_score, counter_score)
+
                         check_count += 1
                         if check_count % self.log_interval == 0:
                             logger.info(f"Audio monitoring - dodge_score: {dodge_score:.4f} (threshold: {self.threshold}), counter_score: {counter_score:.4f} (threshold: {self.counter_attack_threshold})")
@@ -214,3 +216,152 @@ class SoundListener:
                 logger.info(f"Counter attack TRIGGERED! score: {counter_score:.4f}, threshold: {self.counter_attack_threshold}")
                 self.on_counter_triggered()
                 self._last_trigger_time = now
+
+    def _draw_debug_visual(self, dodge_score, counter_score):
+        if not hasattr(self, '_visual_queue'):
+            import queue
+            self._visual_queue = queue.Queue(maxsize=1)
+            self._mouse_x = -1
+            
+            def on_mouse(event, x, y, flags, param):
+                if event == 0: # cv2.EVENT_MOUSEMOVE
+                    self._mouse_x = x
+
+            def visual_worker():
+                logger.info("Debug visual thread started")
+                import cv2
+                window_name = "Sound Listener Debug Wave"
+                cv2.namedWindow(window_name)
+                cv2.setMouseCallback(window_name, on_mouse)
+                
+                while self._running:
+                    try:
+                        # Timeout should be similar to detection_interval
+                        d, c = self._visual_queue.get(timeout=0.1)
+                        self._last_received_d, self._last_received_c = d, c
+                        self._do_draw_debug_visual(d, c, update_history=True)
+                    except Exception:
+                        if self._running:
+                            # If no data, redraw last state without updating history (stops movement)
+                            last_d = getattr(self, '_last_received_d', 0.0)
+                            last_c = getattr(self, '_last_received_c', 0.0)
+                            self._do_draw_debug_visual(last_d, last_c, update_history=False)
+                        continue
+                try:
+                    cv2.destroyAllWindows()
+                except Exception:
+                    pass
+                logger.info("Debug visual thread stopped")
+
+            threading.Thread(target=visual_worker, daemon=True).start()
+
+        self._last_d, self._last_c = dodge_score, counter_score
+
+        try:
+            # Use put_nowait to ensure we never block the audio loop
+            # If the visual thread is slow, we just skip frames
+            self._visual_queue.put_nowait((dodge_score, counter_score))
+        except Exception:
+            pass
+
+    def _do_draw_debug_visual(self, dodge_score, counter_score, update_history=True):
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return
+
+        if not hasattr(self, "_debug_history"):
+            self._debug_history = {"dodge": [], "counter": []}
+            self._max_history = 300
+            self._debug_history["dodge"] = [0.0] * self._max_history
+            self._debug_history["counter"] = [0.0] * self._max_history
+
+        # Update history only if new data arrived
+        if update_history:
+            self._debug_history["dodge"].append(dodge_score)
+            self._debug_history["counter"].append(counter_score)
+            if len(self._debug_history["dodge"]) > self._max_history:
+                self._debug_history["dodge"].pop(0)
+                self._debug_history["counter"].pop(0)
+
+        # Canvas settings
+        width, height = 800, 400
+        canvas = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Draw grid and background
+        canvas[:] = (20, 20, 20)
+        for i in range(1, 10):
+            y = int(height * i / 10)
+            cv2.line(canvas, (0, y), (width, y), (40, 40, 40), 1)
+        for i in range(1, 20):
+            x = int(width * i / 20)
+            cv2.line(canvas, (x, 0), (x, height), (30, 30, 30), 1)
+
+        # Scale function
+        max_val = max(0.5, self.threshold * 1.5, self.counter_attack_threshold * 1.5)
+
+        def get_y(val):
+            return int(height - (val / max_val) * height * 0.8) - 20
+
+        # Draw thresholds
+        d_y = get_y(self.threshold)
+        c_y = get_y(self.counter_attack_threshold)
+        cv2.line(canvas, (0, d_y), (width, d_y), (50, 50, 180), 1, cv2.LINE_AA)
+        cv2.line(canvas, (0, c_y), (width, c_y), (50, 180, 50), 1, cv2.LINE_AA)
+
+        # Draw waves
+        points_d = []
+        points_c = []
+        for i in range(self._max_history):
+            x = int(i * (width / (self._max_history - 1)))
+            points_d.append([x, get_y(self._debug_history["dodge"][i])])
+            points_c.append([x, get_y(self._debug_history["counter"][i])])
+
+        cv2.polylines(
+            canvas, [np.array(points_d, np.int32)], False, (255, 100, 100), 2, cv2.LINE_AA
+        )
+        cv2.polylines(
+            canvas, [np.array(points_c, np.int32)], False, (100, 255, 100), 2, cv2.LINE_AA
+        )
+
+        # Mouse interaction: Timeline and Values
+        if hasattr(self, '_mouse_x') and 0 <= self._mouse_x < width:
+            mx = self._mouse_x
+            idx = int(mx * (self._max_history - 1) / width)
+            if 0 <= idx < self._max_history:
+                d_val = self._debug_history["dodge"][idx]
+                c_val = self._debug_history["counter"][idx]
+                
+                # Draw vertical timeline line
+                cv2.line(canvas, (mx, 0), (mx, height), (150, 150, 150), 1, cv2.LINE_AA)
+                
+                # Display detailed values at cursor
+                info_text = f"T-{self._max_history - idx} | D: {d_val:.4f} | C: {c_val:.4f}"
+                cv2.putText(canvas, info_text, (min(mx + 10, width - 250), 100), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1, cv2.LINE_AA)
+
+        # Text labels
+        cv2.putText(
+            canvas,
+            f"Dodge: {dodge_score:.3f} (T: {self.threshold:.3f})",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 100, 100),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            canvas,
+            f"Counter: {counter_score:.3f} (T: {self.counter_attack_threshold:.3f})",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (100, 255, 100),
+            2,
+            cv2.LINE_AA,
+        )
+
+        cv2.imshow("Sound Listener Debug Wave", canvas)
+        cv2.waitKey(1)

@@ -384,3 +384,9 @@ msgstr "声音触发配置"
 
 msgid "Sound-based dodge and counter trigger settings"
 msgstr "基于声音的闪避和反击触发设置"
+
+msgid "Dodge All Attacks"
+msgstr "闪避所有攻击"
+
+msgid "Dodge all attacks without performing counter attacks"
+msgstr "闪避所有攻击，不执行反击"

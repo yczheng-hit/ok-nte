@@ -33,12 +33,14 @@ sound_trigger_config_option = ConfigOption(
     "Sound Trigger Config",
     {
         "Enable Sound Trigger": True,
+        "Dodge All Attacks": True,
         "Dodge Threshold": 0.13,
         "Counter Attack Threshold": 0.12,
     },
     description="Sound-based dodge and counter trigger settings",
     config_description={
         "Enable Sound Trigger": "Enable sound recognition for automatic dodge and counter attacks",
+        "Dodge All Attacks": "Dodge all attacks without performing counter attacks",
         "Dodge Threshold": "Dodge sound recognition threshold (0.0-1.0, lower is more sensitive)",
         "Counter Attack Threshold": "Counter attack sound recognition threshold (0.0-1.0, lower is more sensitive)",
     },

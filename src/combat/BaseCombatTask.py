@@ -449,7 +449,7 @@ class BaseCombatTask(CombatCheck):
                     self.raise_not_in_combat(
                         f"switch too long failed chars_{current_char_name}_to_{switch_to_name}, {current_time - start_time}"
                     )
-                self.next_frame()
+                self.sleep(0.01)
                 continue
 
             if current_time - last_click_time > 0.2:
@@ -462,7 +462,7 @@ class BaseCombatTask(CombatCheck):
                     self.screenshot(f"switch_not_detected_{current_char_name}_to_{switch_to_name}")
                 self.raise_not_in_combat("failed switch chars")
 
-            self.next_frame()
+            self.sleep(0.01)
 
         if has_intro:
             self.record_element_ring_reaction(current_char, switch_to)
@@ -562,11 +562,12 @@ class BaseCombatTask(CombatCheck):
     def _apply_sound_config(self):
         if self.sound_config:
             enable = self.sound_config.get("Enable Sound Trigger", True)
+            dodge_all_attacks = self.sound_config.get("Dodge All Attacks", True)
             dodge_thresh = self.sound_config.get("Dodge Threshold", 0.13)
             counter_thresh = self.sound_config.get("Counter Attack Threshold", 0.12)
             dodge_thresh = np.clip(dodge_thresh, 0.0, 1.0)
             counter_thresh = np.clip(counter_thresh, 0.0, 1.0)
-            SoundCombatContext().update_config(enable, dodge_thresh, counter_thresh)
+            SoundCombatContext().update_config(enable, dodge_all_attacks, dodge_thresh, counter_thresh)
         SoundCombatContext().update_task(self)
 
     def check_combat(self):

@@ -79,11 +79,9 @@ class DodgeCounterTrigger:
         self.task.send_key("shift")
         time.sleep(0.02)
         self.task.send_key("shift")
-        time.sleep(0.5)
+        time.sleep(0.02)
 
     def _default_counter_action(self):
         logger.info("Counter attack sequence: Left mouse")
         self.task.click()
         time.sleep(0.02)
-        self.task.click()
-        time.sleep(0.5)
