@@ -103,13 +103,13 @@ config = {
                 "use_openvino": True,
             },
         },
-        "bg_onnx_ocr": {
-            "lib": "onnxocr",
-            "auto_simplify": True,
-            "params": {
-                "use_openvino": True,
-            },
-        },
+        # "bg_onnx_ocr": {
+        #     "lib": "onnxocr",
+        #     "auto_simplify": True,
+        #     "params": {
+        #         "use_openvino": True,
+        #     },
+        # },
     },
     "windows": {  # Windows游戏请填写此设置
         "exe": "HTGame.exe",
